@@ -3,21 +3,34 @@ namespace Pico.Node;
 public sealed class TcpNode : INode, IAsyncDisposable
 {
     private readonly Socket _listener;
+    private readonly SocketIoEventArgsPool _eventArgsPool;
+    private readonly TcpConnectionPool _connectionPool;
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<long, TcpConnection> _connections = new();
     private readonly object _stateLock = new();
     private Task? _acceptTask;
+    private Task? _idleMonitorTask;
     private volatile NodeState _state;
     private bool _disposed;
 
     public TcpNode(TcpNodeOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.MaxConnections, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.ReceiveBufferSize, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.Backlog, 0);
+        if (options.IdleTimeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options.IdleTimeout));
+        }
+
         _listener = new Socket(options.Endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
         {
             NoDelay = options.NoDelay,
             LingerState = options.LingerState,
         };
+        _eventArgsPool = new SocketIoEventArgsPool(options.ReceiveBufferSize);
+        _connectionPool = new TcpConnectionPool(this);
 
         if (options.Endpoint.AddressFamily == AddressFamily.InterNetworkV6)
         {
@@ -30,6 +43,8 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
     internal TcpNodeOptions Options { get; }
 
+    internal SocketIoEventArgsPool EventArgsPool => _eventArgsPool;
+
     public EndPoint LocalEndPoint => _listener.LocalEndPoint ?? Options.Endpoint;
 
     public NodeState State => _state;
@@ -40,9 +55,9 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
         lock (_stateLock)
         {
-            if (_state is not (NodeState.Created or NodeState.Stopped))
+            if (_state != NodeState.Created)
             {
-                throw new InvalidOperationException("Node is already running or starting.");
+                throw new InvalidOperationException("Node can only be started once.");
             }
 
             _state = NodeState.Starting;
@@ -52,7 +67,8 @@ public sealed class TcpNode : INode, IAsyncDisposable
         {
             _listener.Bind(Options.Endpoint);
             _listener.Listen(Options.Backlog);
-            _acceptTask = Task.Run(AcceptLoopAsync, CancellationToken.None);
+            _acceptTask = AcceptLoopAsync();
+            _idleMonitorTask = MonitorIdleConnectionsAsync();
             _state = NodeState.Running;
             await Task.CompletedTask;
         }
@@ -94,6 +110,17 @@ public sealed class TcpNode : INode, IAsyncDisposable
             }
         }
 
+        if (_idleMonitorTask is not null)
+        {
+            try
+            {
+                await _idleMonitorTask.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
         foreach (var connection in _connections.Values)
         {
             connection.Close(TcpCloseReason.NodeStopping);
@@ -110,11 +137,20 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
     private async Task AcceptLoopAsync()
     {
+        var acceptArgs = _eventArgsPool.RentAcceptArgs();
+
         while (!_cts.IsCancellationRequested)
         {
             try
             {
-                var socket = await _listener.AcceptAsync(_cts.Token);
+                var acceptResult = await acceptArgs.AcceptAsync(_listener);
+                if (acceptResult.SocketError != SocketError.Success)
+                {
+                    throw new SocketException((int)acceptResult.SocketError);
+                }
+
+                var socket = acceptArgs.AcceptSocket ?? throw new SocketException((int)SocketError.NotSocket);
+                acceptArgs.AcceptSocket = null;
                 socket.NoDelay = Options.NoDelay;
                 socket.LingerState = Options.LingerState;
 
@@ -133,7 +169,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
                     continue;
                 }
 
-                var connection = new TcpConnection(this, socket, Options.ReceiveBufferSize);
+                var connection = _connectionPool.Rent(socket);
                 if (!_connections.TryAdd(connection.Id, connection))
                 {
                     ReportFault(NodeFaultCode.ConnectionRejected, "tcp-track-connection");
@@ -141,10 +177,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
                     continue;
                 }
 
-                _ = Task.Run(
-                    () => connection.RunAsync(Options.Handler, Options.IdleTimeout),
-                    CancellationToken.None
-                );
+                _ = connection.RunAsync(Options.Handler);
             }
             catch (OperationCanceledException) when (_cts.IsCancellationRequested)
             {
@@ -162,8 +195,48 @@ public sealed class TcpNode : INode, IAsyncDisposable
             catch (Exception ex)
             {
                 ReportFault(NodeFaultCode.AcceptFailed, "tcp-accept", ex);
-                await Task.Delay(50, _cts.Token);
+                try
+                {
+                    await Task.Delay(50, _cts.Token);
+                }
+                catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+                {
+                    break;
+                }
             }
+        }
+
+        _eventArgsPool.Return(acceptArgs);
+    }
+
+    private async Task MonitorIdleConnectionsAsync()
+    {
+        if (Options.IdleTimeout <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var interval = Options.IdleTimeout < TimeSpan.FromSeconds(1)
+            ? Options.IdleTimeout
+            : TimeSpan.FromSeconds(1);
+
+        try
+        {
+            while (!_cts.IsCancellationRequested)
+            {
+                await Task.Delay(interval, _cts.Token);
+
+                foreach (var connection in _connections.Values)
+                {
+                    if (connection.IsIdle(Options.IdleTimeout))
+                    {
+                        connection.Close(TcpCloseReason.IdleTimeout);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        {
         }
     }
 
@@ -188,6 +261,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
         await StopAsync();
         _cts.Dispose();
         _listener.Dispose();
+        _eventArgsPool.Dispose();
         _state = NodeState.Disposed;
         GC.SuppressFinalize(this);
     }

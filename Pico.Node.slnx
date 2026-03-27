@@ -10,6 +10,7 @@
   </Folder>
   <Folder Name="/tests/">
     <File Path="tests\README.md" />
+    <Project Path="tests/Pico.Node.PerfHarness/Pico.Node.PerfHarness.csproj" />
     <Project Path="tests/Pico.Node.Smoke/Pico.Node.Smoke.csproj" />
   </Folder>
 </Solution>

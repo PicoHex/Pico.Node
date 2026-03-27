@@ -2,61 +2,89 @@ namespace Pico.Node;
 
 internal sealed class TcpConnection : IAsyncDisposable
 {
-    private readonly TcpNode _node;
-    private readonly Socket _socket;
-    private readonly byte[] _receiveBuffer;
-    private readonly SemaphoreSlim _sendLock = new(1, 1);
-    private readonly CancellationTokenSource _cts = new();
-    private readonly TcpConnectionContext _context;
+    private TcpNode? _node;
+    private TcpConnectionPool? _pool;
+    private Socket? _socket;
+    private SocketIoEventArgs? _receiveArgs;
+    private SocketIoEventArgs? _sendArgs;
+    private SemaphoreSlim? _sendLock;
+    private CancellationTokenSource? _cts;
+    private TcpConnectionContext? _context;
     private int _closeState;
+    private int _disposeState;
+    private int _generation;
+    private IPEndPoint? _remoteEndPoint;
+    private DateTimeOffset _connectedAtUtc;
 
-    public TcpConnection(TcpNode node, Socket socket, int receiveBufferSize)
+    public void Initialize(TcpNode node, TcpConnectionPool pool, Socket socket)
     {
         _node = node;
+        _pool = pool;
         _socket = socket;
-        _receiveBuffer = ArrayPool<byte>.Shared.Rent(receiveBufferSize);
+        _receiveArgs = node.EventArgsPool.RentReceiveArgs();
+        _sendArgs = node.EventArgsPool.RentSendArgs();
+        _sendLock = new SemaphoreSlim(1, 1);
+        _cts = new CancellationTokenSource();
         Id = Interlocked.Increment(ref _nextId);
-        RemoteEndPoint = (IPEndPoint)socket.RemoteEndPoint!;
-        ConnectedAtUtc = DateTimeOffset.UtcNow;
-        _lastActivityTicks = ConnectedAtUtc.UtcTicks;
-        _context = new TcpConnectionContext(this);
+        _remoteEndPoint = (IPEndPoint)socket.RemoteEndPoint!;
+        _connectedAtUtc = DateTimeOffset.UtcNow;
+        _lastActivityTicks = _connectedAtUtc.UtcTicks;
+        _generation++;
+        _closeState = 0;
+        _disposeState = 0;
+        _context = new TcpConnectionContext(this, _generation, Id, _remoteEndPoint, _connectedAtUtc);
     }
 
     private static long _nextId;
     private long _lastActivityTicks;
 
-    public long Id { get; }
+    public long Id { get; private set; }
 
-    public IPEndPoint RemoteEndPoint { get; }
+    public IPEndPoint RemoteEndPoint => _remoteEndPoint!;
 
-    public DateTimeOffset ConnectedAtUtc { get; }
+    public DateTimeOffset ConnectedAtUtc => _connectedAtUtc;
 
     public DateTimeOffset LastActivityUtc => new(Interlocked.Read(ref _lastActivityTicks), TimeSpan.Zero);
 
-    public TcpConnectionContext Context => _context;
+    public TcpConnectionContext Context => _context ?? throw new InvalidOperationException("Connection is not initialized.");
 
-    public async Task RunAsync(ITcpConnectionHandler handler, TimeSpan idleTimeout)
+    public async Task RunAsync(ITcpConnectionHandler handler)
     {
         Exception? error = null;
         var reason = TcpCloseReason.RemoteClosed;
 
         try
         {
-            await handler.OnConnectedAsync(_context, _cts.Token);
+            var context = Context;
+            var cts = _cts ?? throw new InvalidOperationException("Connection token source is missing.");
+            var ct = cts.Token;
+            await handler.OnConnectedAsync(context, ct);
 
-            while (!_cts.IsCancellationRequested)
+            while (!cts.IsCancellationRequested)
             {
-                if (IsIdle(idleTimeout))
+                var receiveArgs = _receiveArgs ?? throw new InvalidOperationException("Receive args missing.");
+                var socket = _socket ?? throw new InvalidOperationException("Socket missing.");
+                var receiveResult = await receiveArgs.ReceiveAsync(socket);
+                if (receiveResult.SocketError != SocketError.Success)
                 {
-                    reason = TcpCloseReason.IdleTimeout;
-                    break;
+                    if (
+                        receiveResult.SocketError
+                        is SocketError.ConnectionReset
+                            or SocketError.ConnectionAborted
+                            or SocketError.OperationAborted
+                    )
+                    {
+                        reason = cts.IsCancellationRequested
+                            ? TcpCloseReason.LocalClose
+                            : TcpCloseReason.RemoteClosed;
+                        break;
+                    }
+
+                    throw new SocketException((int)receiveResult.SocketError);
                 }
 
-                var bytesRead = await _socket.ReceiveAsync(
-                    _receiveBuffer,
-                    SocketFlags.None,
-                    _cts.Token
-                );
+                var bytesRead = receiveResult.BytesTransferred;
+                var receiveBuffer = receiveArgs.Buffer ?? throw new InvalidOperationException("Receive buffer is not available.");
                 if (bytesRead <= 0)
                 {
                     reason = TcpCloseReason.RemoteClosed;
@@ -64,15 +92,27 @@ internal sealed class TcpConnection : IAsyncDisposable
                 }
 
                 Touch();
-                await handler.OnReceivedAsync(_context, new ArraySegment<byte>(_receiveBuffer, 0, bytesRead), _cts.Token);
+                var receiveTask = handler.OnReceivedAsync(
+                    context,
+                    new ArraySegment<byte>(receiveBuffer, 0, bytesRead),
+                    ct
+                );
+                if (!receiveTask.IsCompletedSuccessfully)
+                {
+                    await receiveTask;
+                }
             }
 
-            if (_cts.IsCancellationRequested && reason == TcpCloseReason.RemoteClosed)
+            if (cts.IsCancellationRequested && reason == TcpCloseReason.RemoteClosed)
             {
                 reason = TcpCloseReason.LocalClose;
             }
         }
-        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        catch (OperationCanceledException) when ((_cts?.IsCancellationRequested).GetValueOrDefault())
+        {
+            reason = TcpCloseReason.LocalClose;
+        }
+        catch (ObjectDisposedException) when ((_cts?.IsCancellationRequested).GetValueOrDefault() || Volatile.Read(ref _closeState) != 0)
         {
             reason = TcpCloseReason.LocalClose;
         }
@@ -80,13 +120,21 @@ internal sealed class TcpConnection : IAsyncDisposable
         {
             error = ex;
             reason = TcpCloseReason.ReceiveFault;
-            _node.ReportFault(NodeFaultCode.ReceiveFailed, "tcp-receive", ex);
+            (_node ?? throw new InvalidOperationException("Connection node is missing.")).ReportFault(
+                NodeFaultCode.ReceiveFailed,
+                "tcp-receive",
+                ex
+            );
         }
         catch (Exception ex)
         {
             error = ex;
             reason = TcpCloseReason.HandlerFault;
-            _node.ReportFault(NodeFaultCode.HandlerFailed, "tcp-handler", ex);
+            (_node ?? throw new InvalidOperationException("Connection node is missing.")).ReportFault(
+                NodeFaultCode.HandlerFailed,
+                "tcp-handler",
+                ex
+            );
         }
         finally
         {
@@ -94,47 +142,105 @@ internal sealed class TcpConnection : IAsyncDisposable
         }
     }
 
-    public async Task SendAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
+    public Task SendAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken = default)
+        => SendAsync(_generation, buffer, cancellationToken);
+
+    public async Task SendAsync(
+        int generation,
+        ArraySegment<byte> buffer,
+        CancellationToken cancellationToken = default
+    )
     {
+        EnsureGeneration(generation);
+
         if (Volatile.Read(ref _closeState) != 0)
         {
             throw new InvalidOperationException("Connection is closed.");
         }
 
-        await _sendLock.WaitAsync(cancellationToken);
+        var sendLock = _sendLock ?? throw new InvalidOperationException("Send lock missing.");
+        await sendLock.WaitAsync(cancellationToken);
         try
         {
+            EnsureGeneration(generation);
+
             if (Volatile.Read(ref _closeState) != 0)
             {
                 throw new InvalidOperationException("Connection is closed.");
             }
 
-            await _socket.SendAsync(buffer, SocketFlags.None, cancellationToken);
+            if (buffer.Count == 0)
+            {
+                return;
+            }
+
+            var remaining = buffer;
+            while (remaining.Count > 0)
+            {
+                var sendArgs = _sendArgs ?? throw new InvalidOperationException("Send args missing.");
+                var socket = _socket ?? throw new InvalidOperationException("Socket missing.");
+                sendArgs.SetBuffer(remaining.Array, remaining.Offset, remaining.Count);
+                var sendResult = await sendArgs.SendAsync(socket);
+                if (sendResult.SocketError != SocketError.Success)
+                {
+                    throw new SocketException((int)sendResult.SocketError);
+                }
+
+                if (sendResult.BytesTransferred <= 0)
+                {
+                    throw new SocketException((int)SocketError.ConnectionAborted);
+                }
+
+                if (sendResult.BytesTransferred == remaining.Count)
+                {
+                    break;
+                }
+
+                remaining = new ArraySegment<byte>(
+                    remaining.Array!,
+                    remaining.Offset + sendResult.BytesTransferred,
+                    remaining.Count - sendResult.BytesTransferred
+                );
+            }
+
             Touch();
         }
         catch (SocketException ex)
         {
-            _node.ReportFault(NodeFaultCode.SendFailed, "tcp-send", ex);
-            _ = CloseCoreAsync(TcpCloseReason.SendFault, ex, _node.Options.Handler);
+            var node = _node ?? throw new InvalidOperationException("Connection node is missing.");
+            node.ReportFault(NodeFaultCode.SendFailed, "tcp-send", ex);
+            _ = CloseCoreAsync(TcpCloseReason.SendFault, ex, node.Options.Handler);
             throw;
+        }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _closeState) != 0)
+        {
+            throw new InvalidOperationException("Connection is closed.");
         }
         finally
         {
-            _sendLock.Release();
+            sendLock.Release();
         }
     }
 
     public void Close()
     {
-        _ = CloseCoreAsync(TcpCloseReason.LocalClose, null, _node.Options.Handler);
+        var node = _node ?? throw new InvalidOperationException("Connection node is missing.");
+        _ = CloseCoreAsync(TcpCloseReason.LocalClose, null, node.Options.Handler);
+    }
+
+    public void Close(int generation)
+    {
+        EnsureGeneration(generation);
+        Close();
     }
 
     public void Close(TcpCloseReason reason)
     {
-        _ = CloseCoreAsync(reason, null, _node.Options.Handler);
+        var node = _node ?? throw new InvalidOperationException("Connection node is missing.");
+        _ = CloseCoreAsync(reason, null, node.Options.Handler);
     }
 
-    private bool IsIdle(TimeSpan idleTimeout)
+    internal bool IsIdle(TimeSpan idleTimeout)
     {
         if (idleTimeout <= TimeSpan.Zero)
         {
@@ -144,9 +250,20 @@ internal sealed class TcpConnection : IAsyncDisposable
         return DateTimeOffset.UtcNow - LastActivityUtc >= idleTimeout;
     }
 
+    internal DateTimeOffset GetLastActivityUtc(int generation, DateTimeOffset fallback)
+        => generation == _generation ? LastActivityUtc : fallback;
+
     private void Touch()
     {
         Interlocked.Exchange(ref _lastActivityTicks, DateTimeOffset.UtcNow.UtcTicks);
+    }
+
+    private void EnsureGeneration(int generation)
+    {
+        if (generation != _generation || Volatile.Read(ref _closeState) != 0)
+        {
+            throw new InvalidOperationException("Connection is closed.");
+        }
     }
 
     private async Task CloseCoreAsync(
@@ -160,11 +277,17 @@ internal sealed class TcpConnection : IAsyncDisposable
             return;
         }
 
-        _cts.Cancel();
+        var cts = _cts ?? throw new InvalidOperationException("Connection token source is missing.");
+        var node = _node ?? throw new InvalidOperationException("Connection node is missing.");
+        var socket = _socket ?? throw new InvalidOperationException("Socket missing.");
+        var context = Context;
+
+        cts.Cancel();
+        node.OnConnectionClosed(this);
 
         try
         {
-            _socket.Shutdown(SocketShutdown.Both);
+            socket.Shutdown(SocketShutdown.Both);
         }
         catch
         {
@@ -172,23 +295,60 @@ internal sealed class TcpConnection : IAsyncDisposable
 
         try
         {
-            await handler.OnClosedAsync(_context, reason, error, CancellationToken.None);
+            var closeTask = handler.OnClosedAsync(context, reason, error, CancellationToken.None);
+            if (!closeTask.IsCompletedSuccessfully)
+            {
+                await closeTask;
+            }
         }
         catch (Exception ex)
         {
-            _node.ReportFault(NodeFaultCode.HandlerFailed, "tcp-close-handler", ex);
+            node.ReportFault(NodeFaultCode.HandlerFailed, "tcp-close-handler", ex);
         }
 
-        _node.OnConnectionClosed(this);
         await DisposeAsync();
     }
 
     public ValueTask DisposeAsync()
     {
-        _sendLock.Dispose();
-        _cts.Dispose();
-        _socket.Dispose();
-        ArrayPool<byte>.Shared.Return(_receiveBuffer);
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var node = _node;
+        var pool = _pool;
+        var receiveArgs = _receiveArgs;
+        var sendArgs = _sendArgs;
+        var sendLock = _sendLock;
+        var cts = _cts;
+        var socket = _socket;
+
+        _receiveArgs = null;
+        _sendArgs = null;
+        _sendLock = null;
+        _cts = null;
+        _socket = null;
+        _context = null;
+        _remoteEndPoint = null;
+
+        if (node is not null && receiveArgs is not null)
+        {
+            node.EventArgsPool.Return(receiveArgs);
+        }
+
+        if (node is not null && sendArgs is not null)
+        {
+            node.EventArgsPool.Return(sendArgs);
+        }
+
+        sendLock?.Dispose();
+        cts?.Dispose();
+        socket?.Dispose();
+
+        _node = null;
+        _pool = null;
+        pool?.Return(this);
         return ValueTask.CompletedTask;
     }
 }

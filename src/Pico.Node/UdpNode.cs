@@ -18,6 +18,10 @@ public sealed class UdpNode : INode, IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(options.WorkerCount));
         }
 
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.QueueCapacityPerWorker, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.ReceiveBufferSize, 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.SendBufferSize, 0);
+
         _socket = new Socket(options.Endpoint.AddressFamily, SocketType.Dgram, ProtocolType.Udp)
         {
             ReceiveBufferSize = options.ReceiveBufferSize,
@@ -55,9 +59,9 @@ public sealed class UdpNode : INode, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_state is not (NodeState.Created or NodeState.Stopped))
+        if (_state != NodeState.Created)
         {
-            throw new InvalidOperationException("Node is already running or starting.");
+            throw new InvalidOperationException("Node can only be started once.");
         }
 
         _state = NodeState.Starting;
@@ -68,7 +72,10 @@ public sealed class UdpNode : INode, IAsyncDisposable
             for (var i = 0; i < _workers.Length; i++)
             {
                 var queue = _queues[i];
-                _workers[i] = Task.Run(() => ProcessQueueAsync(queue, _cts.Token), CancellationToken.None);
+                _workers[i] = Task.Run(
+                    () => ProcessQueueAsync(queue, _cts.Token),
+                    CancellationToken.None
+                );
             }
 
             _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token), CancellationToken.None);
@@ -148,19 +155,19 @@ public sealed class UdpNode : INode, IAsyncDisposable
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
+        EndPoint remoteEndPoint = new IPEndPoint(
+            Options.Endpoint.AddressFamily == AddressFamily.InterNetworkV6
+                ? IPAddress.IPv6Any
+                : IPAddress.Any,
+            0
+        );
+
         while (!cancellationToken.IsCancellationRequested)
         {
             var buffer = ArrayPool<byte>.Shared.Rent(65527);
 
             try
             {
-                EndPoint remoteEndPoint = new IPEndPoint(
-                    Options.Endpoint.AddressFamily == AddressFamily.InterNetworkV6
-                        ? IPAddress.IPv6Any
-                        : IPAddress.Any,
-                    0
-                );
-
                 var result = await _socket.ReceiveFromAsync(
                     new ArraySegment<byte>(buffer),
                     SocketFlags.None,
@@ -196,7 +203,14 @@ public sealed class UdpNode : INode, IAsyncDisposable
             {
                 ArrayPool<byte>.Shared.Return(buffer);
                 ReportFault(NodeFaultCode.UdpReceiveFailed, "udp-receive", ex);
-                await Task.Delay(10, cancellationToken);
+                try
+                {
+                    await Task.Delay(10, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
         }
     }
@@ -211,8 +225,16 @@ public sealed class UdpNode : INode, IAsyncDisposable
                 {
                     try
                     {
-                        var context = new UdpDatagramContext(this, lease.RemoteEndPoint);
-                        await Options.Handler.OnDatagramAsync(context, lease.Datagram, cancellationToken);
+                        var context = UdpDatagramContext.Create(this, lease.RemoteEndPoint);
+                        var handleTask = Options.Handler.OnDatagramAsync(
+                            context,
+                            lease.Datagram,
+                            cancellationToken
+                        );
+                        if (!handleTask.IsCompletedSuccessfully)
+                        {
+                            await handleTask;
+                        }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
