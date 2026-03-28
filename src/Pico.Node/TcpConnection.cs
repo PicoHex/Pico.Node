@@ -5,6 +5,7 @@ internal sealed class TcpConnection : IAsyncDisposable
     private readonly TcpNode _node;
     private readonly Socket _socket;
     private readonly SocketIoEventArgs _receiveArgs;
+    private readonly byte[] _receiveBuffer;
     private readonly SocketIoEventArgs _sendArgs;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly CancellationTokenSource _cts = new();
@@ -17,6 +18,7 @@ internal sealed class TcpConnection : IAsyncDisposable
         _node = node;
         _socket = socket;
         _receiveArgs = node.EventArgsPool.RentReceiveArgs();
+        _receiveBuffer = _receiveArgs.Buffer ?? throw new InvalidOperationException("Receive buffer is not available.");
         _sendArgs = node.EventArgsPool.RentSendArgs();
         Id = Interlocked.Increment(ref _nextId);
         RemoteEndPoint = (IPEndPoint)socket.RemoteEndPoint!;
@@ -53,7 +55,10 @@ internal sealed class TcpConnection : IAsyncDisposable
 
             while (!_cts.IsCancellationRequested)
             {
-                var receiveResult = await _receiveArgs.ReceiveAsync(_socket);
+                var receiveOperation = _receiveArgs.ReceiveAsync(_socket);
+                var receiveResult = receiveOperation.IsCompletedSuccessfully
+                    ? receiveOperation.Result
+                    : await receiveOperation;
                 if (receiveResult.SocketError != SocketError.Success)
                 {
                     if (
@@ -73,7 +78,6 @@ internal sealed class TcpConnection : IAsyncDisposable
                 }
 
                 var bytesRead = receiveResult.BytesTransferred;
-                var receiveBuffer = _receiveArgs.Buffer ?? throw new InvalidOperationException("Receive buffer is not available.");
                 if (bytesRead <= 0)
                 {
                     reason = TcpCloseReason.RemoteClosed;
@@ -81,7 +85,7 @@ internal sealed class TcpConnection : IAsyncDisposable
                 }
 
                 Touch();
-                var buffer = new ArraySegment<byte>(receiveBuffer, 0, bytesRead);
+                var buffer = new ArraySegment<byte>(_receiveBuffer, 0, bytesRead);
                 var receiveTask = handler.OnReceivedAsync(context, buffer, ct);
                 if (!receiveTask.IsCompletedSuccessfully)
                 {
@@ -127,6 +131,11 @@ internal sealed class TcpConnection : IAsyncDisposable
             throw new InvalidOperationException("Connection is closed.");
         }
 
+        if (buffer.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
         return SendCoreAsync(buffer, cancellationToken);
     }
 
@@ -140,16 +149,14 @@ internal sealed class TcpConnection : IAsyncDisposable
                 throw new InvalidOperationException("Connection is closed.");
             }
 
-            if (buffer.Count == 0)
-            {
-                return;
-            }
-
             var remaining = buffer;
             while (remaining.Count > 0)
             {
                 _sendArgs.SetBuffer(remaining.Array, remaining.Offset, remaining.Count);
-                var sendResult = await _sendArgs.SendAsync(_socket);
+                var sendOperation = _sendArgs.SendAsync(_socket);
+                var sendResult = sendOperation.IsCompletedSuccessfully
+                    ? sendOperation.Result
+                    : await sendOperation;
                 if (sendResult.SocketError != SocketError.Success)
                 {
                     throw new SocketException((int)sendResult.SocketError);

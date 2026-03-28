@@ -9,6 +9,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
     private readonly object _stateLock = new();
     private Task? _acceptTask;
     private Task? _idleMonitorTask;
+    private TaskCompletionSource<bool>? _drained;
     private volatile NodeState _state;
     private bool _disposed;
 
@@ -87,6 +88,10 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
         _state = NodeState.Stopping;
         _cts.Cancel();
+        var drained = _connections.IsEmpty
+            ? null
+            : new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _drained = drained;
 
         try
         {
@@ -124,13 +129,13 @@ public sealed class TcpNode : INode, IAsyncDisposable
             connection.Close(TcpCloseReason.NodeStopping);
         }
 
-        while (_connections.Count > 0)
+        if (drained is not null)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await Task.Delay(10, cancellationToken);
+            await drained.Task.WaitAsync(cancellationToken);
         }
 
         _state = NodeState.Stopped;
+        _drained = null;
     }
 
     private async Task AcceptLoopAsync()
@@ -244,7 +249,10 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
     internal void OnConnectionClosed(TcpConnection connection)
     {
-        _connections.TryRemove(connection.Id, out _);
+        if (_connections.TryRemove(connection.Id, out _) && _connections.IsEmpty)
+        {
+            _drained?.TrySetResult(true);
+        }
     }
 
     internal void ReportFault(NodeFaultCode code, string operation, Exception? exception = null)
