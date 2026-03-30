@@ -112,6 +112,8 @@ static async Task RunTcpThroughputSweepAsync(Dictionary<string, string> options)
     var payloads = GetIntList(options, "payloads", [64, 256, 1024, 4096]);
     var messages = GetInt(options, "messages", 4000);
     var port = GetInt(options, "port", 7210);
+    var baselineRate = 0d;
+    var baselineThroughput = 0d;
 
     foreach (var payloadSize in payloads)
     {
@@ -142,7 +144,22 @@ static async Task RunTcpThroughputSweepAsync(Dictionary<string, string> options)
 
         stopwatch.Stop();
         var totalBytes = (long)messages * payload.Length * 2;
-        PrintMetrics($"tcp-throughput-sweep payload={payloadSize}", messages, totalBytes, stopwatch.Elapsed, "messages/s");
+        var metrics = CreateMetrics(messages, totalBytes, stopwatch.Elapsed);
+        if (baselineRate <= 0d)
+        {
+            baselineRate = metrics.OpsPerSecond;
+            baselineThroughput = metrics.MiBPerSecond;
+        }
+
+        PrintMetrics(
+            $"tcp-throughput-sweep payload={payloadSize}",
+            messages,
+            totalBytes,
+            stopwatch.Elapsed,
+            "messages/s",
+            metrics,
+            $"vs-first rate={FormatDelta(metrics.OpsPerSecond, baselineRate)} throughput={FormatDelta(metrics.MiBPerSecond, baselineThroughput)}"
+        );
 
         await node.DisposeAsync();
         port++;
@@ -340,17 +357,37 @@ static void PrintMetrics(
     long operations,
     long totalBytes,
     TimeSpan elapsed,
-    string rateLabel
+    string rateLabel,
+    PerfMetrics? metrics = null,
+    string? suffix = null
 )
 {
-    var seconds = Math.Max(elapsed.TotalSeconds, 0.000001d);
-    var opsPerSecond = operations / seconds;
-    var mibPerSecond = totalBytes / seconds / 1024d / 1024d;
+    var resolvedMetrics = metrics ?? CreateMetrics(operations, totalBytes, elapsed);
 
     Console.WriteLine(
-        $"{name} ops={operations} bytes={totalBytes} elapsed={elapsed.TotalMilliseconds:F0}ms rate={opsPerSecond:F0} {rateLabel} throughput={mibPerSecond:F2} MiB/s"
+        $"{name} ops={operations} bytes={totalBytes} elapsed={elapsed.TotalMilliseconds:F0}ms rate={resolvedMetrics.OpsPerSecond:F0} {rateLabel} throughput={resolvedMetrics.MiBPerSecond:F2} MiB/s{FormatSuffix(suffix)}"
     );
 }
+
+static PerfMetrics CreateMetrics(long operations, long totalBytes, TimeSpan elapsed)
+{
+    var seconds = Math.Max(elapsed.TotalSeconds, 0.000001d);
+    return new PerfMetrics(operations / seconds, totalBytes / seconds / 1024d / 1024d);
+}
+
+static string FormatDelta(double current, double baseline)
+{
+    if (baseline <= 0d)
+    {
+        return "n/a";
+    }
+
+    var delta = (current - baseline) / baseline * 100d;
+    return $"{delta:+0.0;-0.0;0.0}%";
+}
+
+static string FormatSuffix(string? suffix)
+    => string.IsNullOrWhiteSpace(suffix) ? string.Empty : $" {suffix}";
 
 static async Task ReadExactAsync(NetworkStream stream, byte[] buffer, int count)
 {
@@ -399,3 +436,5 @@ file sealed class UdpEchoHandler : IUdpDatagramHandler
         CancellationToken cancellationToken
     ) => context.SendAsync(datagram, cancellationToken);
 }
+
+readonly record struct PerfMetrics(double OpsPerSecond, double MiBPerSecond);

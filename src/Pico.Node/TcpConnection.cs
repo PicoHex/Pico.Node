@@ -8,6 +8,7 @@ internal sealed class TcpConnection : IAsyncDisposable
     private const string OperationCloseHandler = "tcp.close.handler";
     private const int MinimumReceiveBufferSize = 512;
     private const int PipeSegmentMultiplier = 4;
+    private const int MaxScatterGatherSegments = 16;
 
     private readonly TcpNode _node;
     private readonly Socket _socket;
@@ -213,6 +214,10 @@ internal sealed class TcpConnection : IAsyncDisposable
             {
                 await SendMemoryAsync(buffer.First, cancellationToken);
             }
+            else if (TryBuildBufferList(buffer, out var segments))
+            {
+                await SendBufferListAsync(segments, cancellationToken);
+            }
             else
             {
                 // 复制到连续缓冲区
@@ -348,5 +353,112 @@ internal sealed class TcpConnection : IAsyncDisposable
 
             buffer = buffer[bytesSent..];
         }
+    }
+
+    private async Task SendBufferListAsync(
+        ArraySegment<byte>[] segments,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            var remainingOffset = 0;
+            while (remainingOffset < segments.Length)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var sendOperation = _socket.SendAsync((IList<ArraySegment<byte>>)segments, SocketFlags.None);
+                var bytesSent = sendOperation.IsCompletedSuccessfully
+                    ? sendOperation.Result
+                    : await sendOperation.WaitAsync(cancellationToken);
+                if (bytesSent <= 0)
+                {
+                    throw new SocketException((int)SocketError.ConnectionAborted);
+                }
+
+                remainingOffset = AdvanceSentSegments(segments, remainingOffset, bytesSent);
+            }
+        }
+        finally
+        {
+            Array.Clear(segments, 0, segments.Length);
+        }
+    }
+
+    private static int AdvanceSentSegments(ArraySegment<byte>[] segments, int startIndex, int bytesSent)
+    {
+        while (startIndex < segments.Length)
+        {
+            var segment = segments[startIndex];
+            if (segment.Count == 0)
+            {
+                startIndex++;
+                continue;
+            }
+
+            if (bytesSent < segment.Count)
+            {
+                segments[startIndex] = new ArraySegment<byte>(
+                    segment.Array!,
+                    segment.Offset + bytesSent,
+                    segment.Count - bytesSent
+                );
+                return startIndex;
+            }
+
+            bytesSent -= segment.Count;
+            segments[startIndex] = default;
+            startIndex++;
+        }
+
+        return startIndex;
+    }
+
+    private static bool TryBuildBufferList(
+        ReadOnlySequence<byte> buffer,
+        out ArraySegment<byte>[] segments
+    )
+    {
+        var segmentCount = 0;
+        foreach (var memory in buffer)
+        {
+            if (memory.IsEmpty)
+            {
+                continue;
+            }
+
+            if (!MemoryMarshal.TryGetArray(memory, out _))
+            {
+                segments = [];
+                return false;
+            }
+
+            segmentCount++;
+            if (segmentCount > MaxScatterGatherSegments)
+            {
+                segments = [];
+                return false;
+            }
+        }
+
+        if (segmentCount == 0)
+        {
+            segments = [];
+            return true;
+        }
+
+        segments = new ArraySegment<byte>[segmentCount];
+        var index = 0;
+        foreach (var memory in buffer)
+        {
+            if (memory.IsEmpty)
+            {
+                continue;
+            }
+
+            MemoryMarshal.TryGetArray(memory, out segments[index]);
+            index++;
+        }
+
+        return true;
     }
 }
