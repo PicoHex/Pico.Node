@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/samples/">
+    <File Path="samples\README.md" />
+    <Project Path="samples/PicoNode.Samples.Echo/PicoNode.Samples.Echo.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <File Path="src\README.md" />
+    <Project Path="src/PicoNode.Abs/PicoNode.Abs.csproj" />
+    <Project Path="src/PicoNode/PicoNode.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <File Path="tests\README.md" />
+    <Project Path="tests/Pico.Node.PerfHarness/Pico.Node.PerfHarness.csproj" />
+    <Project Path="tests/Pico.Node.Smoke/Pico.Node.Smoke.csproj" />
+  </Folder>
+</Solution>
