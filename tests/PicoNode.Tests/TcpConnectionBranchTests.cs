@@ -113,6 +113,77 @@ public sealed class TcpConnectionBranchTests
     }
 
     [Test]
+    public async Task RunAsync_closes_with_local_close_when_receive_loop_hits_object_disposed_after_close()
+    {
+        var pair = await CreateConnectedSocketsAsync();
+        try
+        {
+            var handler = new RecordingTcpHandler();
+            var connection = CreateConnection(pair.Server, handler);
+            var runTask = connection.RunAsync(new ObjectDisposedTcpHandler(connection));
+
+            var closed = await handler.Closed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await runTask.WaitAsync(TimeSpan.FromSeconds(3));
+
+            await Assert.That(closed.Reason).IsEqualTo(TcpCloseReason.LocalClose);
+            await Assert.That(closed.Error).IsNull();
+        }
+        finally
+        {
+            pair.Client.Dispose();
+            pair.Server.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task RunAsync_reports_receive_failed_and_closes_with_receive_fault_on_socket_exception()
+    {
+        var pair = await CreateConnectedSocketsAsync();
+        try
+        {
+            var faults = new ConcurrentQueue<NodeFault>();
+            var faultReported = new TaskCompletionSource<NodeFault>(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
+            var handler = new RecordingTcpHandler();
+            var connection = CreateConnection(
+                pair.Server,
+                handler,
+                fault =>
+                {
+                    faults.Enqueue(fault);
+                    if (fault.Code == NodeFaultCode.ReceiveFailed)
+                    {
+                        faultReported.TrySetResult(fault);
+                    }
+                }
+            );
+            var exception = new SocketException((int)SocketError.NetworkDown);
+            var runTask = connection.RunAsync(new SocketExceptionTcpHandler(exception, handler));
+
+            await handler.Connected.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await pair.Client.SendAsync(new byte[] { 9 }, SocketFlags.None);
+            pair.Client.Shutdown(SocketShutdown.Send);
+
+            var fault = await faultReported.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            var closed = await handler.Closed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await runTask.WaitAsync(TimeSpan.FromSeconds(3));
+
+            await Assert.That(faults.Count).IsEqualTo(1);
+            await Assert.That(fault.Code).IsEqualTo(NodeFaultCode.ReceiveFailed);
+            await Assert.That(fault.Operation).IsEqualTo("tcp.receive");
+            await Assert.That(fault.Exception).IsSameReferenceAs(exception);
+            await Assert.That(closed.Reason).IsEqualTo(TcpCloseReason.ReceiveFault);
+            await Assert.That(closed.Error).IsSameReferenceAs(exception);
+        }
+        finally
+        {
+            pair.Client.Dispose();
+            pair.Server.Dispose();
+        }
+    }
+
+    [Test]
     public async Task SendAsync_returns_completed_task_for_empty_buffer()
     {
         var pair = await CreateConnectedSocketsAsync();
@@ -855,6 +926,60 @@ public sealed class TcpConnectionBranchTests
         {
             _release.TrySetResult(true);
         }
+    }
+
+    private sealed class ObjectDisposedTcpHandler(TcpConnection connection) : ITcpConnectionHandler
+    {
+        private readonly TcpConnection _connection = connection;
+
+        public Task OnConnectedAsync(
+            ITcpConnectionContext connection,
+            CancellationToken cancellationToken
+        )
+        {
+            _connection.Close();
+            return Task.CompletedTask;
+        }
+
+        public ValueTask<SequencePosition> OnReceivedAsync(
+            ITcpConnectionContext connection,
+            ReadOnlySequence<byte> buffer,
+            CancellationToken cancellationToken
+        ) => throw new ObjectDisposedException(nameof(TcpConnection));
+
+        public Task OnClosedAsync(
+            ITcpConnectionContext connection,
+            TcpCloseReason reason,
+            Exception? error,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+    }
+
+    private sealed class SocketExceptionTcpHandler(
+        SocketException exception,
+        RecordingTcpHandler closedRecorder
+    ) : ITcpConnectionHandler
+    {
+        private readonly SocketException _exception = exception;
+        private readonly RecordingTcpHandler _closedRecorder = closedRecorder;
+
+        public Task OnConnectedAsync(
+            ITcpConnectionContext connection,
+            CancellationToken cancellationToken
+        ) => _closedRecorder.OnConnectedAsync(connection, cancellationToken);
+
+        public ValueTask<SequencePosition> OnReceivedAsync(
+            ITcpConnectionContext connection,
+            ReadOnlySequence<byte> buffer,
+            CancellationToken cancellationToken
+        ) => ValueTask.FromException<SequencePosition>(_exception);
+
+        public Task OnClosedAsync(
+            ITcpConnectionContext connection,
+            TcpCloseReason reason,
+            Exception? error,
+            CancellationToken cancellationToken
+        ) => _closedRecorder.OnClosedAsync(connection, reason, error, cancellationToken);
     }
 
     private sealed class AsyncThrowingClosedTcpHandler(Exception exception) : ITcpConnectionHandler

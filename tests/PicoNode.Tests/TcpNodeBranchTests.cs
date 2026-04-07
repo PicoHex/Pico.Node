@@ -352,6 +352,55 @@ public sealed class TcpNodeBranchTests
         }
     }
 
+    [Test]
+    public async Task MonitorIdleConnectionsAsync_closes_idle_connections_with_idle_timeout_reason()
+    {
+        var handler = new RecordingTcpHandler();
+        await using var node = CreateNode(
+            handler,
+            endpoint: new IPEndPoint(IPAddress.Loopback, 0),
+            idleTimeout: TimeSpan.FromMilliseconds(150)
+        );
+        using var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+        await node.StartAsync();
+        await client.ConnectAsync((IPEndPoint)node.LocalEndPoint);
+
+        var closed = await handler.Closed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        await Assert.That(closed.Reason).IsEqualTo(TcpCloseReason.IdleTimeout);
+        await Assert.That(closed.Error).IsNull();
+    }
+
+    [Test]
+    public async Task ProcessAcceptedSocketAsync_reports_tracking_rejection_when_node_is_stopping()
+    {
+        var faults = new ConcurrentQueue<NodeFault>();
+        var pair = await CreateConnectedSocketsAsync();
+        try
+        {
+            var node = CreateNode(faults.Enqueue);
+            typeof(TcpNode)
+                .GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(node, NodeState.Stopping);
+
+            await InvokeProcessAcceptedSocketAsync(node, pair.Server);
+
+            await Assert.That(faults.Count).IsEqualTo(1);
+            await Assert.That(faults.TryPeek(out var fault)).IsTrue();
+            await Assert.That(fault!.Code).IsEqualTo(NodeFaultCode.SessionRejected);
+            await Assert.That(fault.Operation).IsEqualTo("tcp.reject.tracking");
+            await Assert.That(() => pair.Server.Send(new byte[] { 1 }, SocketFlags.None))
+                .Throws<ObjectDisposedException>();
+
+            await node.DisposeAsync();
+        }
+        finally
+        {
+            pair.Client.Dispose();
+        }
+    }
+
     private static TcpNode CreateNode(Action<NodeFault> faultHandler) =>
         CreateNode(new NoOpTcpHandler(), faultHandler);
 
@@ -359,7 +408,8 @@ public sealed class TcpNodeBranchTests
         ITcpConnectionHandler handler,
         Action<NodeFault>? faultHandler = null,
         IPEndPoint? endpoint = null,
-        bool enableDualMode = false
+        bool enableDualMode = false,
+        TimeSpan? idleTimeout = null
     ) =>
         new(
             new TcpNodeOptions
@@ -368,6 +418,7 @@ public sealed class TcpNodeBranchTests
             ConnectionHandler = handler,
             FaultHandler = faultHandler,
             EnableDualMode = enableDualMode,
+            IdleTimeout = idleTimeout ?? TimeSpan.Zero,
         }
         );
 
@@ -409,6 +460,16 @@ public sealed class TcpNodeBranchTests
         )!;
 
         return (bool)method.Invoke(node, [connection])!;
+    }
+
+    private static async Task InvokeProcessAcceptedSocketAsync(TcpNode node, Socket socket)
+    {
+        var method = typeof(TcpNode).GetMethod(
+            "ProcessAcceptedSocketAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
+
+        await (Task)method.Invoke(node, [socket])!;
     }
 
     private static SocketIoEventArgsPool GetEventArgsPool(TcpNode node)
