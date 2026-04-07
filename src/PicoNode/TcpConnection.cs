@@ -54,22 +54,12 @@ internal sealed class TcpConnection : IAsyncDisposable
     {
         Exception? error = null;
         var reason = TcpCloseReason.RemoteClosed;
+        var context = _context;
+        var ct = _cts.Token;
 
         try
         {
-            var context = _context;
-            var ct = _cts.Token;
-
-            var processingTask = ProcessPipeAsync(handler, context, ct);
-
-            await InvokeConnectedAsync(handler, context, ct);
-            reason = await PumpSocketToPipeAsync(ct);
-            await CompletePipeAsync(processingTask);
-
-            if (_cts.IsCancellationRequested && reason == TcpCloseReason.RemoteClosed)
-            {
-                reason = TcpCloseReason.LocalClose;
-            }
+            reason = await ExecuteReceiveLoopAsync(handler, context, ct);
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested)
         {
@@ -82,26 +72,10 @@ internal sealed class TcpConnection : IAsyncDisposable
         }
         catch (SocketException ex)
         {
-            if (
-                ex.SocketErrorCode
-                is SocketError.ConnectionReset
-                    or SocketError.ConnectionAborted
-                    or SocketError.OperationAborted
-            )
-            {
-                reason = _cts.IsCancellationRequested
-                    ? TcpCloseReason.LocalClose
-                    : TcpCloseReason.RemoteClosed;
-            }
-
             error = ex;
-            if (reason == TcpCloseReason.RemoteClosed)
+            reason = MapSocketExceptionReason(ex, reason);
+            if (ShouldReportReceiveFault(reason))
             {
-                _node.ReportFault(NodeFaultCode.ReceiveFailed, OperationReceive, ex);
-            }
-            else if (reason != TcpCloseReason.LocalClose)
-            {
-                reason = TcpCloseReason.ReceiveFault;
                 _node.ReportFault(NodeFaultCode.ReceiveFailed, OperationReceive, ex);
             }
         }
@@ -116,6 +90,25 @@ internal sealed class TcpConnection : IAsyncDisposable
             await CloseCoreAsync(reason, error, handler);
         }
     }
+
+    private async Task<TcpCloseReason> ExecuteReceiveLoopAsync(
+        ITcpConnectionHandler handler,
+        ITcpConnectionContext context,
+        CancellationToken cancellationToken
+    )
+    {
+        var processingTask = ProcessPipeAsync(handler, context, cancellationToken);
+
+        await InvokeConnectedAsync(handler, context, cancellationToken);
+        var reason = await PumpSocketToPipeAsync(cancellationToken);
+        await CompletePipeAsync(processingTask);
+        return NormalizeCompletionReason(reason);
+    }
+
+    private TcpCloseReason NormalizeCompletionReason(TcpCloseReason reason) =>
+        _cts.IsCancellationRequested && reason == TcpCloseReason.RemoteClosed
+            ? TcpCloseReason.LocalClose
+            : reason;
 
     private async Task ProcessPipeAsync(
         ITcpConnectionHandler handler,
@@ -135,7 +128,8 @@ internal sealed class TcpConnection : IAsyncDisposable
 
                 if (buffer.Length > 0)
                 {
-                    var consumedPosition = await handler.OnReceivedAsync(
+                    var consumedPosition = await InvokeOnReceivedAsync(
+                        handler,
                         context,
                         buffer,
                         cancellationToken
@@ -243,37 +237,15 @@ internal sealed class TcpConnection : IAsyncDisposable
         ITcpConnectionHandler handler
     )
     {
-        if (Interlocked.Exchange(ref _closeState, 1) != 0)
+        if (!TryBeginClose())
         {
             return;
         }
 
-        await _cts.CancelAsync();
-
-        try
-        {
-            _socket.Shutdown(SocketShutdown.Both);
-        }
-        catch
-        {
-            // ignored
-        }
-
-        try
-        {
-            var closeTask = handler.OnClosedAsync(_context, reason, error, CancellationToken.None);
-            if (!closeTask.IsCompletedSuccessfully)
-            {
-                await closeTask;
-            }
-        }
-        catch (Exception ex)
-        {
-            _node.ReportFault(NodeFaultCode.HandlerFailed, OperationCloseHandler, ex);
-        }
-
-        await DisposeAsync();
-        _node.OnConnectionClosed(this);
+        await CancelConnectionAsync();
+        ShutdownSocketSafely();
+        await InvokeClosedHandlerAsync(handler, reason, error);
+        await FinalizeCloseAsync();
     }
 
     public ValueTask DisposeAsync()
@@ -319,15 +291,7 @@ internal sealed class TcpConnection : IAsyncDisposable
     {
         while (!_cts.IsCancellationRequested)
         {
-            var memory = _pipe.Writer.GetMemory(_receiveBufferSize);
-            var receiveOperation = _socket.ReceiveAsync(
-                memory,
-                SocketFlags.None,
-                cancellationToken
-            );
-            var bytesRead = receiveOperation.IsCompletedSuccessfully
-                ? receiveOperation.Result
-                : await receiveOperation;
+            var bytesRead = await ReceiveIntoPipeBufferAsync(cancellationToken);
             if (bytesRead <= 0)
             {
                 return TcpCloseReason.RemoteClosed;
@@ -335,11 +299,7 @@ internal sealed class TcpConnection : IAsyncDisposable
 
             Touch();
 
-            _pipe.Writer.Advance(bytesRead);
-            var flushOperation = _pipe.Writer.FlushAsync(cancellationToken);
-            var flushResult = flushOperation.IsCompletedSuccessfully
-                ? flushOperation.Result
-                : await flushOperation;
+            var flushResult = await FlushReceivedBytesAsync(bytesRead, cancellationToken);
             if (flushResult.IsCompleted || flushResult.IsCanceled)
             {
                 break;
@@ -353,6 +313,99 @@ internal sealed class TcpConnection : IAsyncDisposable
     {
         await _pipe.Writer.CompleteAsync();
         await processingTask;
+    }
+
+    private async ValueTask<SequencePosition> InvokeOnReceivedAsync(
+        ITcpConnectionHandler handler,
+        ITcpConnectionContext context,
+        ReadOnlySequence<byte> buffer,
+        CancellationToken cancellationToken
+    ) => await handler.OnReceivedAsync(context, buffer, cancellationToken);
+
+    private async ValueTask<int> ReceiveIntoPipeBufferAsync(CancellationToken cancellationToken)
+    {
+        var memory = _pipe.Writer.GetMemory(_receiveBufferSize);
+        var receiveOperation = _socket.ReceiveAsync(memory, SocketFlags.None, cancellationToken);
+        return receiveOperation.IsCompletedSuccessfully
+            ? receiveOperation.Result
+            : await receiveOperation;
+    }
+
+    private async ValueTask<FlushResult> FlushReceivedBytesAsync(
+        int bytesRead,
+        CancellationToken cancellationToken
+    )
+    {
+        _pipe.Writer.Advance(bytesRead);
+        var flushOperation = _pipe.Writer.FlushAsync(cancellationToken);
+        return flushOperation.IsCompletedSuccessfully ? flushOperation.Result : await flushOperation;
+    }
+
+    private TcpCloseReason MapSocketExceptionReason(
+        SocketException exception,
+        TcpCloseReason currentReason
+    )
+    {
+        if (
+            exception.SocketErrorCode
+            is SocketError.ConnectionReset
+                or SocketError.ConnectionAborted
+                or SocketError.OperationAborted
+        )
+        {
+            return _cts.IsCancellationRequested
+                ? TcpCloseReason.LocalClose
+                : TcpCloseReason.RemoteClosed;
+        }
+
+        return currentReason == TcpCloseReason.LocalClose
+            ? currentReason
+            : TcpCloseReason.ReceiveFault;
+    }
+
+    private static bool ShouldReportReceiveFault(TcpCloseReason reason) =>
+        reason is TcpCloseReason.RemoteClosed or TcpCloseReason.ReceiveFault;
+
+    private bool TryBeginClose() => Interlocked.Exchange(ref _closeState, 1) == 0;
+
+    private Task CancelConnectionAsync() => _cts.CancelAsync();
+
+    private void ShutdownSocketSafely()
+    {
+        try
+        {
+            _socket.Shutdown(SocketShutdown.Both);
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    private async Task InvokeClosedHandlerAsync(
+        ITcpConnectionHandler handler,
+        TcpCloseReason reason,
+        Exception? error
+    )
+    {
+        try
+        {
+            var closeTask = handler.OnClosedAsync(_context, reason, error, CancellationToken.None);
+            if (!closeTask.IsCompletedSuccessfully)
+            {
+                await closeTask;
+            }
+        }
+        catch (Exception ex)
+        {
+            _node.ReportFault(NodeFaultCode.HandlerFailed, OperationCloseHandler, ex);
+        }
+    }
+
+    private async Task FinalizeCloseAsync()
+    {
+        await DisposeAsync();
+        _node.OnConnectionClosed(this);
     }
 
     private sealed class SendPath(Socket socket)
