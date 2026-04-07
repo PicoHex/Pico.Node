@@ -1,19 +1,154 @@
-using System.Buffers;
-using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Sockets;
-using System.Reflection;
-using PicoNode;
-using PicoNode.Abs;
+namespace PicoNode.Tests;
 
 public sealed class TcpNodeBranchTests
 {
+    [Test]
+    public async Task Constructor_rejects_invalid_numeric_options()
+    {
+        await Assert
+            .That(
+                () =>
+                    new TcpNode(
+                        new TcpNodeOptions
+                        {
+                            Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
+                            ConnectionHandler = new NoOpTcpHandler(),
+                            MaxConnections = 0,
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+
+        await Assert
+            .That(
+                () =>
+                    new TcpNode(
+                        new TcpNodeOptions
+                        {
+                            Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
+                            ConnectionHandler = new NoOpTcpHandler(),
+                            ReceiveSocketBufferSize = 0,
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+
+        await Assert
+            .That(
+                () =>
+                    new TcpNode(
+                        new TcpNodeOptions
+                        {
+                            Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
+                            ConnectionHandler = new NoOpTcpHandler(),
+                            SendSocketBufferSize = 0,
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+
+        await Assert
+            .That(
+                () =>
+                    new TcpNode(
+                        new TcpNodeOptions
+                        {
+                            Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
+                            ConnectionHandler = new NoOpTcpHandler(),
+                            Backlog = 0,
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task Constructor_rejects_negative_timeout_options()
+    {
+        await Assert
+            .That(
+                () =>
+                    new TcpNode(
+                        new TcpNodeOptions
+                        {
+                            Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
+                            ConnectionHandler = new NoOpTcpHandler(),
+                            IdleTimeout = TimeSpan.FromMilliseconds(-1),
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+
+        await Assert
+            .That(
+                () =>
+                    new TcpNode(
+                        new TcpNodeOptions
+                        {
+                            Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
+                            ConnectionHandler = new NoOpTcpHandler(),
+                            AcceptFaultBackoff = TimeSpan.FromMilliseconds(-1),
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+
+        await Assert
+            .That(
+                () =>
+                    new TcpNode(
+                        new TcpNodeOptions
+                        {
+                            Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
+                            ConnectionHandler = new NoOpTcpHandler(),
+                            DrainTimeout = TimeSpan.FromMilliseconds(-1),
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task Constructor_rejects_null_options()
+    {
+        await Assert.That(() => new TcpNode(null!)).Throws<ArgumentNullException>();
+    }
+
     [Test]
     public async Task RejectAcceptedSocket_reports_fault_and_disposes_socket()
     {
         var faults = new ConcurrentQueue<NodeFault>();
         var node = CreateNode(faults.Enqueue);
-        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        using var socket = new Socket(
+            AddressFamily.InterNetwork,
+            SocketType.Stream,
+            ProtocolType.Tcp
+        );
+
+        InvokeRejectAcceptedSocket(node, socket, NodeFaultCode.SessionRejected, "tcp.reject.limit");
+
+        await Assert.That(faults.Count).IsEqualTo(1);
+        await Assert.That(faults.TryPeek(out var fault)).IsTrue();
+        await Assert.That(fault!.Code).IsEqualTo(NodeFaultCode.SessionRejected);
+        await Assert.That(fault.Operation).IsEqualTo("tcp.reject.limit");
+        await Assert.That(() => socket.Bind(new IPEndPoint(IPAddress.Loopback, 0)))
+            .Throws<ObjectDisposedException>();
+
+        await node.DisposeAsync();
+    }
+
+    [Test]
+    public async Task RejectAcceptedSocket_swallows_shutdown_failures_and_still_disposes_socket()
+    {
+        var faults = new ConcurrentQueue<NodeFault>();
+        await using var node = CreateNode(faults.Enqueue);
+        using var socket = new Socket(
+            AddressFamily.InterNetwork,
+            SocketType.Stream,
+            ProtocolType.Tcp
+        );
+
+        socket.Dispose();
 
         InvokeRejectAcceptedSocket(node, socket, NodeFaultCode.SessionRejected, "tcp.reject.limit");
 
@@ -34,7 +169,14 @@ public sealed class TcpNodeBranchTests
             }
         );
 
-        InvokeReportFault(node, NodeFaultCode.ReceiveFailed, "tcp.receive", new InvalidOperationException("x"));
+        InvokeReportFault(
+            node,
+            NodeFaultCode.ReceiveFailed,
+            "tcp.receive",
+            new InvalidOperationException("x")
+        );
+
+        await node.DisposeAsync();
     }
 
     [Test]
@@ -47,9 +189,118 @@ public sealed class TcpNodeBranchTests
             throw new InvalidOperationException("fault handler failed");
         });
 
-        InvokeReportFault(node, NodeFaultCode.SendFailed, "tcp.send", new SocketException((int)SocketError.NetworkDown));
+        InvokeReportFault(
+            node,
+            NodeFaultCode.SendFailed,
+            "tcp.send",
+            new SocketException((int)SocketError.NetworkDown)
+        );
 
         await Assert.That(calls).IsEqualTo(1);
+        await node.DisposeAsync();
+    }
+
+    [Test]
+    public async Task StartAsync_cannot_be_called_twice()
+    {
+        await using var node = CreateNode(_ => { });
+
+        await node.StartAsync();
+
+        await Assert.That(() => node.StartAsync()).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task DisposeAsync_is_idempotent_and_sets_disposed_state()
+    {
+        var node = CreateNode(_ => { });
+
+        await node.StartAsync();
+        await node.DisposeAsync();
+        await node.DisposeAsync();
+
+        await Assert.That(node.State).IsEqualTo(NodeState.Disposed);
+        await Assert.That(() => node.StartAsync()).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task LocalEndPoint_returns_configured_endpoint_before_start()
+    {
+        var endpoint = new IPEndPoint(IPAddress.Loopback, 43210);
+        await using var node = CreateNode(new NoOpTcpHandler(), endpoint: endpoint);
+
+        await Assert.That(node.LocalEndPoint).IsEqualTo(endpoint);
+    }
+
+    [Test]
+    public async Task EventArgsPool_exposes_internal_pool_instance()
+    {
+        await using var node = CreateNode(_ => { });
+
+        await Assert.That(GetEventArgsPool(node)).IsNotNull();
+    }
+
+    [Test]
+    public async Task Constructor_applies_ipv6_dual_mode_when_requested()
+    {
+        var endpoint = new IPEndPoint(IPAddress.IPv6Loopback, 0);
+        await using var node = CreateNode(
+            new NoOpTcpHandler(),
+            endpoint: endpoint,
+            enableDualMode: true
+        );
+
+        await Assert.That(GetListener(node).DualMode).IsTrue();
+    }
+
+    [Test]
+    public async Task StartAsync_reports_start_failed_when_bind_throws()
+    {
+        var endpoint = new IPEndPoint(IPAddress.Loopback, 0);
+        using var blocker = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
+        {
+            ExclusiveAddressUse = true,
+        };
+        blocker.Bind(endpoint);
+        blocker.Listen(1);
+
+        var faults = new ConcurrentQueue<NodeFault>();
+        await using var node = CreateNode(
+            new NoOpTcpHandler(),
+            faults.Enqueue,
+            (IPEndPoint)blocker.LocalEndPoint!
+        );
+
+        var exception = await Assert.That(() => node.StartAsync()).Throws<SocketException>();
+
+        await Assert.That(exception).IsNotNull();
+        await Assert.That(faults.Count).IsEqualTo(1);
+        await Assert.That(faults.TryPeek(out var fault)).IsTrue();
+        await Assert.That(fault!.Code).IsEqualTo(NodeFaultCode.StartFailed);
+        await Assert.That(fault.Operation).IsEqualTo("tcp.start");
+        await Assert.That(node.State).IsEqualTo(NodeState.Stopped);
+    }
+
+    [Test]
+    public async Task StopAsync_closes_running_connections_with_node_stopping()
+    {
+        var handler = new RecordingTcpHandler();
+        await using var node = CreateNode(handler);
+        using var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+        await node.StartAsync();
+        await client.ConnectAsync((IPEndPoint)node.LocalEndPoint);
+
+        var connected = await handler.Connected.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        await node.StopAsync();
+
+        var closed = await handler.Closed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        await Assert.That(connected.RemoteEndPoint).IsEqualTo((IPEndPoint)client.LocalEndPoint!);
+        await Assert.That(closed.Reason).IsEqualTo(TcpCloseReason.NodeStopping);
+        await Assert.That(closed.Error).IsNull();
+        await Assert.That(node.State).IsEqualTo(NodeState.Stopped);
     }
 
     [Test]
@@ -68,6 +319,31 @@ public sealed class TcpNodeBranchTests
 
             await Assert.That(result).IsFalse();
             await connection.DisposeAsync();
+            await node.DisposeAsync();
+        }
+        finally
+        {
+            pair.Client.Dispose();
+            pair.Server.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task OnConnectionClosed_without_drain_target_removes_connection()
+    {
+        var pair = await CreateConnectedSocketsAsync();
+        try
+        {
+            await using var node = CreateNode(_ => { });
+            var connection = new TcpConnection(node, pair.Server);
+
+            var tracked = GetConnections(node).TryAdd(connection.Id, connection);
+            await Assert.That(tracked).IsTrue();
+
+            node.OnConnectionClosed(connection);
+
+            await Assert.That(GetConnections(node).Count).IsEqualTo(0);
+            await connection.DisposeAsync();
         }
         finally
         {
@@ -77,13 +353,22 @@ public sealed class TcpNodeBranchTests
     }
 
     private static TcpNode CreateNode(Action<NodeFault> faultHandler) =>
+        CreateNode(new NoOpTcpHandler(), faultHandler);
+
+    private static TcpNode CreateNode(
+        ITcpConnectionHandler handler,
+        Action<NodeFault>? faultHandler = null,
+        IPEndPoint? endpoint = null,
+        bool enableDualMode = false
+    ) =>
         new(
             new TcpNodeOptions
-            {
-                Endpoint = new IPEndPoint(IPAddress.Loopback, 0),
-                ConnectionHandler = new NoOpTcpHandler(),
-                FaultHandler = faultHandler,
-            }
+        {
+            Endpoint = endpoint ?? new IPEndPoint(IPAddress.Loopback, 0),
+            ConnectionHandler = handler,
+            FaultHandler = faultHandler,
+            EnableDualMode = enableDualMode,
+        }
         );
 
     private static void InvokeRejectAcceptedSocket(
@@ -126,6 +411,36 @@ public sealed class TcpNodeBranchTests
         return (bool)method.Invoke(node, [connection])!;
     }
 
+    private static SocketIoEventArgsPool GetEventArgsPool(TcpNode node)
+    {
+        var property = typeof(TcpNode).GetProperty(
+            "EventArgsPool",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
+
+        return (SocketIoEventArgsPool)property.GetValue(node)!;
+    }
+
+    private static Socket GetListener(TcpNode node)
+    {
+        var field = typeof(TcpNode).GetField(
+            "_listener",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
+
+        return (Socket)field.GetValue(node)!;
+    }
+
+    private static ConcurrentDictionary<long, TcpConnection> GetConnections(TcpNode node)
+    {
+        var field = typeof(TcpNode).GetField(
+            "_connections",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
+
+        return (ConcurrentDictionary<long, TcpConnection>)field.GetValue(node)!;
+    }
+
     private static async Task<(Socket Client, Socket Server)> CreateConnectedSocketsAsync()
     {
         var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -140,10 +455,49 @@ public sealed class TcpNodeBranchTests
         return (client, server);
     }
 
+    private sealed class RecordingTcpHandler : ITcpConnectionHandler
+    {
+        public TaskCompletionSource<ConnectedTcpConnection> Connected { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<ClosedTcpConnection> Closed { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task OnConnectedAsync(
+            ITcpConnectionContext connection,
+            CancellationToken cancellationToken
+        )
+        {
+            Connected.TrySetResult(
+                new ConnectedTcpConnection(connection.ConnectionId, connection.RemoteEndPoint)
+            );
+            return Task.CompletedTask;
+        }
+
+        public ValueTask<SequencePosition> OnReceivedAsync(
+            ITcpConnectionContext connection,
+            ReadOnlySequence<byte> buffer,
+            CancellationToken cancellationToken
+        ) => ValueTask.FromResult(buffer.End);
+
+        public Task OnClosedAsync(
+            ITcpConnectionContext connection,
+            TcpCloseReason reason,
+            Exception? error,
+            CancellationToken cancellationToken
+        )
+        {
+            Closed.TrySetResult(new ClosedTcpConnection(reason, error));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class NoOpTcpHandler : ITcpConnectionHandler
     {
-        public Task OnConnectedAsync(ITcpConnectionContext connection, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task OnConnectedAsync(
+            ITcpConnectionContext connection,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
 
         public ValueTask<SequencePosition> OnReceivedAsync(
             ITcpConnectionContext connection,
@@ -158,4 +512,8 @@ public sealed class TcpNodeBranchTests
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
     }
+
+    private sealed record ConnectedTcpConnection(long ConnectionId, IPEndPoint RemoteEndPoint);
+
+    private sealed record ClosedTcpConnection(TcpCloseReason Reason, Exception? Error);
 }
