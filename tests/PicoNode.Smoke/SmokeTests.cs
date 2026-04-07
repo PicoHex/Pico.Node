@@ -2,8 +2,9 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using PicoNode;
 using PicoNode.Abs;
+
+namespace PicoNode.Smoke;
 
 public sealed class SmokeTests
 {
@@ -274,7 +275,8 @@ public sealed class SmokeTests
         await handler.Started.WaitAsync(TimeSpan.FromSeconds(5));
 
         using var stopCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-        await Assert.That(async () => await node.StopAsync(stopCts.Token))
+        await Assert
+            .That(async () => await node.StopAsync(stopCts.Token))
             .Throws<OperationCanceledException>();
         await Assert.That(node.State).IsEqualTo(NodeState.Stopping);
 
