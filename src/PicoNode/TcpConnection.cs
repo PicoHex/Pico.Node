@@ -248,13 +248,16 @@ internal sealed class TcpConnection : IAsyncDisposable
             return;
         }
 
-        _cts.Cancel();
+        await _cts.CancelAsync();
 
         try
         {
             _socket.Shutdown(SocketShutdown.Both);
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
 
         try
         {
@@ -317,7 +320,11 @@ internal sealed class TcpConnection : IAsyncDisposable
         while (!_cts.IsCancellationRequested)
         {
             var memory = _pipe.Writer.GetMemory(_receiveBufferSize);
-            var receiveOperation = _socket.ReceiveAsync(memory, SocketFlags.None, cancellationToken);
+            var receiveOperation = _socket.ReceiveAsync(
+                memory,
+                SocketFlags.None,
+                cancellationToken
+            );
             var bytesRead = receiveOperation.IsCompletedSuccessfully
                 ? receiveOperation.Result
                 : await receiveOperation;
@@ -494,21 +501,20 @@ internal sealed class TcpConnection : IAsyncDisposable
 
                 if (!MemoryMarshal.TryGetArray(memory, out _))
                 {
-                    segments = [];
+                    segments =  [];
                     return false;
                 }
 
                 segmentCount++;
-                if (segmentCount > MaxScatterGatherSegments)
-                {
-                    segments = [];
-                    return false;
-                }
+                if (segmentCount <= MaxScatterGatherSegments)
+                    continue;
+                segments =  [];
+                return false;
             }
 
             if (segmentCount == 0)
             {
-                segments = [];
+                segments =  [];
                 return true;
             }
 
