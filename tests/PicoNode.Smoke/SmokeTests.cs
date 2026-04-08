@@ -220,17 +220,15 @@ public sealed class SmokeTests
 
         await using var node = CreateHttpNode(
             port,
-            new HttpRouter(
+                new HttpRouter(
                 new HttpRouterOptions
                 {
                     Routes =
                     [
-                        new HttpRoute
-                        {
-                            Method = "POST",
-                            Path = "/echo",
-                            Handler = static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "echo")),
-                        },
+                        HttpRoute.MapPost(
+                            "/echo",
+                            static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "echo"))
+                        ),
                     ],
                 }
             ).HandleAsync
@@ -258,17 +256,15 @@ public sealed class SmokeTests
 
         await using var node = CreateHttpNode(
             port,
-            new HttpRouter(
+                new HttpRouter(
                 new HttpRouterOptions
                 {
                     Routes =
                     [
-                        new HttpRoute
-                        {
-                            Method = "GET",
-                            Path = "/hello",
-                            Handler = static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "hello")),
-                        },
+                        HttpRoute.MapGet(
+                            "/hello",
+                            static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "hello"))
+                        ),
                     ],
                     FallbackHandler = static (_, _) =>
                         ValueTask.FromResult(CreateTextResponse(404, "Not Found", "router-missing")),
@@ -288,6 +284,163 @@ public sealed class SmokeTests
 
         await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 404 Not Found");
         await Assert.That(Encoding.ASCII.GetString(response.Body)).IsEqualTo("router-missing");
+    }
+
+    [Test]
+    public async Task RunHttpMissingHostSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            new HttpRouter(
+                new HttpRouterOptions
+                {
+                    Routes =
+                    [
+                        HttpRoute.MapGet(
+                            "/hello",
+                            static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "hello"))
+                        ),
+                    ],
+                }
+            ).HandleAsync
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET /hello HTTP/1.1\r\nAccept: text/plain\r\n\r\n");
+
+        var response = await ReadHttpResponseAsync(stream);
+        var closed = await ReadToEndAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 400 Bad Request");
+        await Assert.That(response.Headers["Connection"]).IsEqualTo("close");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("0");
+        await Assert.That(closed).IsTrue();
+    }
+
+    [Test]
+    public async Task RunHttpRouterPutDeleteSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            new HttpRouter(
+                new HttpRouterOptions
+                {
+                    Routes =
+                    [
+                        HttpRoute.MapPut(
+                            "/resource",
+                            static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "put-ok"))
+                        ),
+                        HttpRoute.MapDelete(
+                            "/resource",
+                            static (_, _) => ValueTask.FromResult(new HttpResponse { StatusCode = 204, ReasonPhrase = "No Content" })
+                        ),
+                    ],
+                }
+            ).HandleAsync
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "PUT /resource HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n");
+        var putResponse = await ReadHttpResponseAsync(stream);
+
+        await SendHttpRequestAsync(stream, "DELETE /resource HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        var deleteResponse = await ReadHttpResponseAsync(stream);
+
+        await Assert.That(putResponse.StatusLine).IsEqualTo("HTTP/1.1 200 OK");
+        await Assert.That(Encoding.ASCII.GetString(putResponse.Body)).IsEqualTo("put-ok");
+        await Assert.That(deleteResponse.StatusLine).IsEqualTo("HTTP/1.1 204 No Content");
+        await Assert.That(deleteResponse.Headers["Content-Length"]).IsEqualTo("0");
+    }
+
+    [Test]
+    public async Task RunHttpInvalidRequestTargetSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            new HttpRouter(
+                new HttpRouterOptions
+                {
+                    Routes =
+                    [
+                        HttpRoute.MapGet(
+                            "/hello",
+                            static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "hello"))
+                        ),
+                    ],
+                }
+            ).HandleAsync
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET foo HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+        var response = await ReadHttpResponseAsync(stream);
+        var closed = await ReadToEndAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 400 Bad Request");
+        await Assert.That(response.Headers["Connection"]).IsEqualTo("close");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("0");
+        await Assert.That(closed).IsTrue();
+    }
+
+    [Test]
+    public async Task RunHttpInvalidHostFormatSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            new HttpRouter(
+                new HttpRouterOptions
+                {
+                    Routes =
+                    [
+                        HttpRoute.MapGet(
+                            "/hello",
+                            static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "hello"))
+                        ),
+                    ],
+                }
+            ).HandleAsync
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET /hello HTTP/1.1\r\nHost: http://localhost\r\n\r\n");
+
+        var response = await ReadHttpResponseAsync(stream);
+        var closed = await ReadToEndAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 400 Bad Request");
+        await Assert.That(response.Headers["Connection"]).IsEqualTo("close");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("0");
+        await Assert.That(closed).IsTrue();
     }
 
     [Test]
