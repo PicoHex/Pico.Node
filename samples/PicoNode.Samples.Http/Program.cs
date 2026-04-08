@@ -34,18 +34,14 @@ static HttpRouter CreateRouter() =>
         {
             Routes =
             [
-                new HttpRoute
-                {
-                    Method = "GET",
-                    Path = "/",
-                    Handler = static (_, _) =>
-                        ValueTask.FromResult(CreateTextResponse(200, "OK", "hello from PicoNode.Http")),
-                },
-                new HttpRoute
-                {
-                    Method = "POST",
-                    Path = "/echo",
-                    Handler = static (request, _) =>
+                HttpRoute.MapGet(
+                    "/",
+                    static (_, _) =>
+                        ValueTask.FromResult(CreateTextResponse(200, "OK", "hello from PicoNode.Http"))
+                ),
+                HttpRoute.MapPost(
+                    "/echo",
+                    static (request, _) =>
                         ValueTask.FromResult(
                             new HttpResponse
                             {
@@ -58,8 +54,8 @@ static HttpRouter CreateRouter() =>
                                 ],
                                 Body = request.Body.ToArray(),
                             }
-                        ),
-                },
+                        )
+                ),
             ],
             FallbackHandler = static (_, _) =>
                 ValueTask.FromResult(CreateTextResponse(404, "Not Found", "not found")),
