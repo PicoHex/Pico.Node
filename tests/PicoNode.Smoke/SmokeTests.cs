@@ -1,3 +1,5 @@
+using PicoNode.Http;
+
 namespace PicoNode.Smoke;
 
 public sealed class SmokeTests
@@ -28,6 +30,264 @@ public sealed class SmokeTests
         var buffer = new byte[payload.Length];
         await ReadExactAsync(stream, buffer);
         await AssertPayloadEqualAsync(buffer, payload);
+    }
+
+    [Test]
+    public async Task RunHttpGetSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            static (request, _) =>
+                ValueTask.FromResult(
+                    request.Method == "GET" && request.Target == "/hello"
+                        ? CreateTextResponse(200, "OK", "hello")
+                        : CreateTextResponse(404, "Not Found", "missing")
+                )
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        var response = await ReadHttpResponseAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 200 OK");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("5");
+        await Assert.That(Encoding.ASCII.GetString(response.Body)).IsEqualTo("hello");
+    }
+
+    [Test]
+    public async Task RunHttpPostWithContentLengthSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            static (request, _) =>
+            {
+                if (request.Method == "POST" && request.Target == "/submit")
+                {
+                    return ValueTask.FromResult(
+                        CreateTextResponse(200, "OK", $"posted:{Encoding.ASCII.GetString(request.Body.Span)}")
+                    );
+                }
+
+                return ValueTask.FromResult(CreateTextResponse(404, "Not Found", "missing"));
+            }
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(
+            stream,
+            "POST /submit HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\nhello"
+        );
+
+        var response = await ReadHttpResponseAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 200 OK");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("12");
+        await Assert.That(Encoding.ASCII.GetString(response.Body)).IsEqualTo("posted:hello");
+    }
+
+    [Test]
+    public async Task RunHttpSequentialReuseSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+        var requests = new ConcurrentQueue<string>();
+
+        await using var node = CreateHttpNode(
+            port,
+            (request, _) =>
+            {
+                requests.Enqueue($"{request.Method} {request.Target}");
+
+                return ValueTask.FromResult(
+                    (request.Method, request.Target) switch
+                    {
+                        ("GET", "/first") => CreateTextResponse(200, "OK", "first"),
+                        ("POST", "/second") => CreateTextResponse(
+                            200,
+                            "OK",
+                            $"second:{Encoding.ASCII.GetString(request.Body.Span)}"
+                        ),
+                        _ => CreateTextResponse(404, "Not Found", "missing"),
+                    }
+                );
+            }
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        var firstResponse = await ReadHttpResponseAsync(stream);
+
+        await SendHttpRequestAsync(
+            stream,
+            "POST /second HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\nagain"
+        );
+
+        var secondResponse = await ReadHttpResponseAsync(stream);
+
+        await Assert.That(firstResponse.StatusLine).IsEqualTo("HTTP/1.1 200 OK");
+        await Assert.That(Encoding.ASCII.GetString(firstResponse.Body)).IsEqualTo("first");
+        await Assert.That(secondResponse.StatusLine).IsEqualTo("HTTP/1.1 200 OK");
+        await Assert.That(Encoding.ASCII.GetString(secondResponse.Body)).IsEqualTo("second:again");
+        await Assert.That(requests.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task RunHttpUnsupportedFramingSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+        var requestHandlerCalled = false;
+
+        await using var node = CreateHttpNode(
+            port,
+            (_, _) =>
+            {
+                requestHandlerCalled = true;
+                return ValueTask.FromResult(CreateTextResponse(200, "OK", "unexpected"));
+            }
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(
+            stream,
+            "POST /submit HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"
+        );
+
+        var response = await ReadHttpResponseAsync(stream);
+        var closed = await ReadToEndAsync(stream);
+
+        await Assert.That(requestHandlerCalled).IsFalse();
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 501 Not Implemented");
+        await Assert.That(response.Headers["Connection"]).IsEqualTo("close");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("0");
+        await Assert.That(response.Body.Length).IsEqualTo(0);
+        await Assert.That(closed).IsTrue();
+    }
+
+    [Test]
+    public async Task RunHttpHandlerFailureSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            static (_, _) => throw new InvalidOperationException("boom")
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+        var response = await ReadHttpResponseAsync(stream);
+        var closed = await ReadToEndAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 500 Internal Server Error");
+        await Assert.That(response.Headers["Connection"]).IsEqualTo("close");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("0");
+        await Assert.That(closed).IsTrue();
+    }
+
+    [Test]
+    public async Task RunHttpRouterMethodNotAllowedSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            new HttpRouter(
+                new HttpRouterOptions
+                {
+                    Routes =
+                    [
+                        new HttpRoute
+                        {
+                            Method = "POST",
+                            Path = "/echo",
+                            Handler = static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "echo")),
+                        },
+                    ],
+                }
+            ).HandleAsync
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET /echo HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+        var response = await ReadHttpResponseAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 405 Method Not Allowed");
+        await Assert.That(response.Headers["Allow"]).IsEqualTo("POST");
+        await Assert.That(response.Headers["Content-Length"]).IsEqualTo("0");
+    }
+
+    [Test]
+    public async Task RunHttpRouterFallbackSmokeAsync()
+    {
+        var port = GetAvailablePort(SocketType.Stream, ProtocolType.Tcp);
+
+        await using var node = CreateHttpNode(
+            port,
+            new HttpRouter(
+                new HttpRouterOptions
+                {
+                    Routes =
+                    [
+                        new HttpRoute
+                        {
+                            Method = "GET",
+                            Path = "/hello",
+                            Handler = static (_, _) => ValueTask.FromResult(CreateTextResponse(200, "OK", "hello")),
+                        },
+                    ],
+                    FallbackHandler = static (_, _) =>
+                        ValueTask.FromResult(CreateTextResponse(404, "Not Found", "router-missing")),
+                }
+            ).HandleAsync
+        );
+
+        await node.StartAsync();
+
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        using var stream = client.GetStream();
+
+        await SendHttpRequestAsync(stream, "GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+        var response = await ReadHttpResponseAsync(stream);
+
+        await Assert.That(response.StatusLine).IsEqualTo("HTTP/1.1 404 Not Found");
+        await Assert.That(Encoding.ASCII.GetString(response.Body)).IsEqualTo("router-missing");
     }
 
     [Test]
@@ -284,15 +544,146 @@ public sealed class SmokeTests
     {
         using var socket = new Socket(AddressFamily.InterNetwork, socketType, protocolType);
         socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
-        return ((IPEndPoint)socket.LocalEndPoint!).Port;
+        if (socket.LocalEndPoint is not IPEndPoint localEndPoint)
+        {
+            throw new InvalidOperationException("Socket endpoint should be available after bind.");
+        }
+
+        return localEndPoint.Port;
     }
 
-    private static async Task ReadExactAsync(NetworkStream stream, byte[] buffer)
+    private static TcpNode CreateHttpNode(int port, HttpRequestHandler requestHandler) =>
+        new(
+            new TcpNodeOptions
+            {
+                Endpoint = new IPEndPoint(IPAddress.Loopback, port),
+                ConnectionHandler = new HttpConnectionHandler(
+                    new HttpConnectionHandlerOptions
+                    {
+                        RequestHandler = requestHandler,
+                    }
+                ),
+                DrainTimeout = TimeSpan.FromSeconds(2),
+            }
+        );
+
+    private static HttpResponse CreateTextResponse(
+        int statusCode,
+        string reasonPhrase,
+        string body
+    ) =>
+        new()
+        {
+            StatusCode = statusCode,
+            ReasonPhrase = reasonPhrase,
+            Headers =
+            [
+                new KeyValuePair<string, string>("Content-Type", "text/plain"),
+                new KeyValuePair<string, string>("X-Content-Type-Options", "nosniff"),
+            ],
+            Body = Encoding.ASCII.GetBytes(body),
+        };
+
+    private static Task SendHttpRequestAsync(NetworkStream stream, string request) =>
+        stream.WriteAsync(Encoding.ASCII.GetBytes(request)).AsTask();
+
+    private static async Task<(string StatusLine, Dictionary<string, string> Headers, byte[] Body)> ReadHttpResponseAsync(
+        NetworkStream stream
+    )
+    {
+        using var buffer = new MemoryStream();
+
+        while (true)
+        {
+            var chunk = new byte[256];
+            var read = await stream.ReadAsync(chunk.AsMemory()).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            if (read == 0)
+            {
+                throw new InvalidOperationException("Connection closed while reading HTTP response.");
+            }
+
+            buffer.Write(chunk, 0, read);
+
+            var responseBytes = buffer.ToArray();
+            var headerLength = FindHeaderLength(responseBytes);
+            if (headerLength < 0)
+            {
+                continue;
+            }
+
+            var headerText = Encoding.ASCII.GetString(responseBytes, 0, headerLength);
+            var lines = headerText.Split("\r\n", StringSplitOptions.None);
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            for (var index = 1; index < lines.Length; index++)
+            {
+                var colonIndex = lines[index].IndexOf(':');
+                if (colonIndex <= 0)
+                {
+                    throw new InvalidOperationException("Invalid HTTP response header.");
+                }
+
+                headers.Add(lines[index][..colonIndex], lines[index][(colonIndex + 1)..].Trim());
+            }
+
+            var contentLength = headers.TryGetValue("Content-Length", out var contentLengthValue)
+                ? int.Parse(contentLengthValue, CultureInfo.InvariantCulture)
+                : 0;
+            var body = new byte[contentLength];
+            var bufferedBodyCount = responseBytes.Length - (headerLength + 4);
+            var copiedBodyCount = Math.Min(bufferedBodyCount, contentLength);
+
+            if (copiedBodyCount > 0)
+            {
+                Array.Copy(responseBytes, headerLength + 4, body, 0, copiedBodyCount);
+            }
+
+            if (copiedBodyCount < contentLength)
+            {
+                await ReadExactAsync(stream, body.AsMemory(copiedBodyCount, contentLength - copiedBodyCount));
+            }
+
+            return (lines[0], headers, body);
+        }
+    }
+
+    private static int FindHeaderLength(byte[] buffer)
+    {
+        for (var index = 0; index <= buffer.Length - 4; index++)
+        {
+            if (
+                buffer[index] == '\r'
+                && buffer[index + 1] == '\n'
+                && buffer[index + 2] == '\r'
+                && buffer[index + 3] == '\n'
+            )
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static async Task<bool> ReadToEndAsync(NetworkStream stream)
+    {
+        var buffer = new byte[1];
+        var read = await stream.ReadAsync(buffer.AsMemory()).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        return read == 0;
+    }
+
+    private static Task ReadExactAsync(NetworkStream stream, byte[] buffer) =>
+        ReadExactAsync(stream, buffer.AsMemory());
+
+    private static async Task ReadExactAsync(NetworkStream stream, Memory<byte> buffer)
     {
         var offset = 0;
         while (offset < buffer.Length)
         {
-            var read = await stream.ReadAsync(buffer.AsMemory(offset, buffer.Length - offset));
+            var read = await stream
+                .ReadAsync(buffer[offset..])
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(5));
             if (read == 0)
             {
                 throw new InvalidOperationException("Connection closed while reading.");
@@ -408,7 +799,6 @@ file sealed class TcpEchoHandler : ITcpConnectionHandler
         CancellationToken cancellationToken
     )
     {
-        // Echo: 将接收到的数据原样发送回去，并消费整个缓冲区
         _ = connection.SendAsync(buffer, cancellationToken);
         return ValueTask.FromResult(buffer.End);
     }
