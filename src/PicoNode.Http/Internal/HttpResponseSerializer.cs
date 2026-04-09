@@ -193,11 +193,7 @@ internal static class HttpResponseSerializer
     private static void WriteInt(IBufferWriter<byte> buffer, int value)
     {
         var span = buffer.GetSpan(11);
-        if (!value.TryFormat(span, out var bytesWritten))
-        {
-            throw new InvalidOperationException("Buffer too small for integer formatting.");
-        }
-
+        value.TryFormat(span, out var bytesWritten);
         buffer.Advance(bytesWritten);
     }
 
