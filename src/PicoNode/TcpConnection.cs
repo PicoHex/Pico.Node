@@ -338,7 +338,9 @@ internal sealed class TcpConnection : IAsyncDisposable
     {
         _pipe.Writer.Advance(bytesRead);
         var flushOperation = _pipe.Writer.FlushAsync(cancellationToken);
-        return flushOperation.IsCompletedSuccessfully ? flushOperation.Result : await flushOperation;
+        return flushOperation.IsCompletedSuccessfully
+            ? flushOperation.Result
+            : await flushOperation;
     }
 
     private TcpCloseReason MapSocketExceptionReason(
@@ -378,7 +380,7 @@ internal sealed class TcpConnection : IAsyncDisposable
         }
         catch
         {
-            // ignored
+            // Socket may already be disconnected or disposed; safe to ignore.
         }
     }
 

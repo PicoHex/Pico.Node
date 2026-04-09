@@ -24,7 +24,9 @@ public sealed class TcpConnectionBranchTests
 
             await runTask.WaitAsync(TimeSpan.FromSeconds(3));
 
-            await Assert.That(connected.RemoteEndPoint).IsEqualTo((IPEndPoint)pair.Client.LocalEndPoint!);
+            await Assert
+                .That(connected.RemoteEndPoint)
+                .IsEqualTo((IPEndPoint)pair.Client.LocalEndPoint!);
             await Assert.That(received).IsEquivalentTo(payload);
             await Assert.That(closed.Reason).IsEqualTo(TcpCloseReason.RemoteClosed);
             await Assert.That(closed.Error).IsNull();
@@ -214,7 +216,8 @@ public sealed class TcpConnectionBranchTests
             await connection.DisposeAsync();
             await connection.DisposeAsync();
 
-            await Assert.That(connection.SendAsync(new ReadOnlySequence<byte>(new byte[] { 1 })))
+            await Assert
+                .That(connection.SendAsync(new ReadOnlySequence<byte>(new byte[] { 1 })))
                 .Throws<InvalidOperationException>();
         }
         finally
@@ -300,16 +303,25 @@ public sealed class TcpConnectionBranchTests
             );
             var exception = new InvalidOperationException("close handler boom");
             var handler = new AsyncThrowingClosedTcpHandler(exception);
-            var connection = CreateConnection(pair.Server, handler, fault =>
-            {
-                faults.Enqueue(fault);
-                if (fault.Operation == "tcp.close.handler")
+            var connection = CreateConnection(
+                pair.Server,
+                handler,
+                fault =>
                 {
-                    faultReported.TrySetResult(fault);
+                    faults.Enqueue(fault);
+                    if (fault.Operation == "tcp.close.handler")
+                    {
+                        faultReported.TrySetResult(fault);
+                    }
                 }
-            });
+            );
 
-            var task = InvokeClosedHandlerAsync(connection, handler, TcpCloseReason.LocalClose, null);
+            var task = InvokeClosedHandlerAsync(
+                connection,
+                handler,
+                TcpCloseReason.LocalClose,
+                null
+            );
 
             await Assert.That(task.IsCompleted).IsFalse();
 
@@ -395,7 +407,12 @@ public sealed class TcpConnectionBranchTests
             var expected = new byte[] { 1, 2, 3 };
 
             await connection.SendAsync(
-                CreateSequence(Array.Empty<byte>(), new byte[] { 1, 2 }, Array.Empty<byte>(), new byte[] { 3 })
+                CreateSequence(
+                    Array.Empty<byte>(),
+                    new byte[] { 1, 2 },
+                    Array.Empty<byte>(),
+                    new byte[] { 3 }
+                )
             );
 
             var received = await ReceiveExactAsync(pair.Client, expected.Length);
@@ -829,7 +846,9 @@ public sealed class TcpConnectionBranchTests
             );
             if (read <= 0)
             {
-                throw new InvalidOperationException("Socket closed before all bytes were received.");
+                throw new InvalidOperationException(
+                    "Socket closed before all bytes were received."
+                );
             }
 
             totalRead += read;
@@ -888,8 +907,7 @@ public sealed class TcpConnectionBranchTests
 
         public override Span<byte> GetSpan() => _buffer;
 
-        public override MemoryHandle Pin(int elementIndex = 0) =>
-            throw new NotSupportedException();
+        public override MemoryHandle Pin(int elementIndex = 0) => throw new NotSupportedException();
 
         public override void Unpin() { }
 
@@ -1016,7 +1034,8 @@ public sealed class TcpConnectionBranchTests
         }
     }
 
-    private sealed class RecordingTcpHandler(Exception? receiveException = null) : ITcpConnectionHandler
+    private sealed class RecordingTcpHandler(Exception? receiveException = null)
+        : ITcpConnectionHandler
     {
         private readonly Exception? _receiveException = receiveException;
 
