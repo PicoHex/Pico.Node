@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicoWeb | Showcase</title>
+    <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+    <div class="blueprint-grid"></div>
+    
+    <header class="sys-header">
+        <div class="logo-mark">PW</div>
+        <div>
+            <h1 class="sys-title">PicoWeb Static Showcase</h1>
+            <p class="sys-subtitle">Static files, compression, CORS, cookies, and multipart forms on one tiny pipeline</p>
+        </div>
+        <div class="status-indicator">
+            <span class="pulse"></span> LIVE
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <section class="panel" id="panel-api">
+            <div class="panel-header">
+                <h2>01. Routing & CORS</h2>
+                <span class="badge">GET /api/showcase</span>
+            </div>
+            <div class="panel-body">
+                <p>Fetch the live sample contract, including enabled features and the CORS policy exposed for local cross-origin API clients.</p>
+                <button class="btn primary" id="btn-fetch-showcase">Execute Request</button>
+                <div class="output-container">
+                    <div class="output-meta" id="meta-showcase">Waiting...</div>
+                    <pre class="code-block" id="out-showcase">// Response payload will appear here</pre>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" id="panel-content">
+            <div class="panel-header">
+                <h2>02. Content Compression</h2>
+                <span class="badge">GET /api/content</span>
+            </div>
+            <div class="panel-body">
+                <p>Ask the browser for a larger response and inspect the returned <code>Content-Encoding</code> header to confirm negotiated compression.</p>
+                <button class="btn primary" id="btn-fetch-content">Fetch Content Payload</button>
+                <div class="output-container">
+                    <div class="output-meta" id="meta-content">Waiting...</div>
+                    <pre class="code-block" id="out-content">// Response payload will appear here</pre>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" id="panel-state">
+            <div class="panel-header">
+                <h2>03. State & Cookies</h2>
+                <span class="badge">GET/POST /api/preferences*</span>
+            </div>
+            <div class="panel-body">
+                <p>Set a same-origin theme cookie on the server, then read it back through the API and apply the preference to this static page.</p>
+                <div class="btn-group">
+                    <button class="btn secondary" data-theme-set="light">Set Light Theme</button>
+                    <button class="btn secondary" data-theme-set="dark">Set Dark Theme</button>
+                    <button class="btn" id="btn-check-prefs">Check Status</button>
+                </div>
+                <div class="output-container">
+                    <div class="output-meta" id="meta-state">Waiting...</div>
+                    <pre class="code-block" id="out-state">// Cookie state will appear here</pre>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel span-2" id="panel-upload">
+            <div class="panel-header">
+                <h2>04. Multipart Form Data</h2>
+                <span class="badge">POST /api/uploads</span>
+            </div>
+            <div class="panel-body">
+                <p>Submit a real <code>multipart/form-data</code> request and inspect the parsed field and file metadata returned by the server.</p>
+                <form id="upload-form" class="upload-zone">
+                    <div class="file-input-wrapper">
+                        <input type="file" id="file-input" name="file" multiple>
+                        <div class="file-input-ui">
+                            <span class="upload-icon">↑</span>
+                            <span class="upload-text">Select files or drag & drop</span>
+                        </div>
+                    </div>
+                    <input type="text" name="metadata" placeholder="Optional metadata string" class="text-input">
+                    <button type="submit" class="btn primary full-width">Upload Files</button>
+                </form>
+                <div class="output-container mt-4">
+                    <div class="output-meta" id="meta-upload">Waiting...</div>
+                    <pre class="code-block" id="out-upload">// Upload result will appear here</pre>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="sys-footer">
+        <div>PicoWeb showcase sample</div>
+        <div>Static HTML • plain JavaScript • existing PicoNode.Web primitives</div>
+    </footer>
+
+    <script src="/assets/site.js"></script>
+</body>
+</html>
