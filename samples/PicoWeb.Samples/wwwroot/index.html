@@ -77,7 +77,7 @@
             </div>
             <div class="panel-body">
                 <p>Submit a real <code>multipart/form-data</code> request and inspect the parsed field and file metadata returned by the server.</p>
-                <form id="upload-form" class="upload-zone">
+                <form id="upload-form" class="upload-zone" method="post" action="/api/uploads" enctype="multipart/form-data">
                     <div class="file-input-wrapper">
                         <input type="file" id="file-input" name="file" multiple>
                         <div class="file-input-ui">
