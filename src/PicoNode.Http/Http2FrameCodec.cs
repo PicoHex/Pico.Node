@@ -162,33 +162,3 @@ public static class Http2FrameCodec
         return settings;
     }
 }
-
-public enum Http2SettingId : ushort
-{
-    HeaderTableSize = 0x1,
-    EnablePush = 0x2,
-    MaxConcurrentStreams = 0x3,
-    InitialWindowSize = 0x4,
-    MaxFrameSize = 0x5,
-    MaxHeaderListSize = 0x6,
-}
-
-public readonly record struct Http2Setting(Http2SettingId Id, uint Value);
-
-public enum Http2ErrorCode : uint
-{
-    NoError = 0x0,
-    ProtocolError = 0x1,
-    InternalError = 0x2,
-    FlowControlError = 0x3,
-    SettingsTimeout = 0x4,
-    StreamClosed = 0x5,
-    FrameSizeError = 0x6,
-    RefusedStream = 0x7,
-    Cancel = 0x8,
-    CompressionError = 0x9,
-    ConnectError = 0xA,
-    EnhanceYourCalm = 0xB,
-    InadequateSecurity = 0xC,
-    Http11Required = 0xD,
-}

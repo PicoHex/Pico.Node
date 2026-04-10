@@ -493,12 +493,18 @@ internal sealed class TcpConnection : IAsyncDisposable
             }
             else
             {
-                foreach (var segment in buffer)
+                var tempBuffer = ArrayPool<byte>.Shared.Rent((int)buffer.Length);
+                try
                 {
-                    if (!segment.IsEmpty)
-                    {
-                        await stream!.WriteAsync(segment, cancellationToken);
-                    }
+                    buffer.CopyTo(tempBuffer);
+                    await stream!.WriteAsync(
+                        tempBuffer.AsMemory(0, (int)buffer.Length),
+                        cancellationToken
+                    );
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(tempBuffer, clearArray: false);
                 }
             }
 

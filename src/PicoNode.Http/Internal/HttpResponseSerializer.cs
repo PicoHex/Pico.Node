@@ -10,6 +10,7 @@ internal static class HttpResponseSerializer
     private const string ChunkedHeaderValue = "chunked";
     private static readonly System.Text.Encoding HeaderEncoding = System.Text.Encoding.ASCII;
     private static readonly byte[] ChunkTerminatorBytes = "0\r\n\r\n"u8.ToArray();
+    private static readonly byte[] CrLfBytes = "\r\n"u8.ToArray();
 
     public static ReadOnlySequence<byte> Serialize(
         HttpResponse response,
@@ -134,15 +135,24 @@ internal static class HttpResponseSerializer
             return ReadOnlySequence<byte>.Empty;
         }
 
-        var sizeText = data.Length.ToString("x");
-        var prefix = System.Text.Encoding.ASCII.GetBytes(sizeText + "\r\n");
-        var suffix = "\r\n"u8.ToArray();
+        var prefix = FormatChunkPrefix(data.Length);
 
         var first = new BufferSegment(prefix);
         var dataSegment = first.Append(data);
-        var last = dataSegment.Append(suffix);
+        var last = dataSegment.Append(CrLfBytes);
 
         return new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length);
+    }
+
+    private static byte[] FormatChunkPrefix(int length)
+    {
+        Span<byte> hex = stackalloc byte[10];
+        length.TryFormat(hex, out var written, "x");
+        var prefix = new byte[written + 2];
+        hex[..written].CopyTo(prefix);
+        prefix[written] = (byte)'\r';
+        prefix[written + 1] = (byte)'\n';
+        return prefix;
     }
 
     public static ReadOnlySequence<byte> ChunkTerminator => new(ChunkTerminatorBytes);

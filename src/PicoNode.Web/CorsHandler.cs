@@ -13,6 +13,12 @@ public static class CorsHandler
         if (!IsOriginAllowed(origin, options))
             return new HttpResponse { StatusCode = 403 };
 
+        if (
+            request.Headers.TryGetValue("Access-Control-Request-Method", out var requestMethod)
+            && !IsMethodAllowed(requestMethod, options)
+        )
+            return new HttpResponse { StatusCode = 403 };
+
         var headers = new List<KeyValuePair<string, string>>
         {
             new("Access-Control-Allow-Origin", origin),
@@ -64,6 +70,17 @@ public static class CorsHandler
         foreach (var allowed in options.AllowedOrigins)
         {
             if (allowed == "*" || allowed.Equals(origin, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsMethodAllowed(string method, CorsOptions options)
+    {
+        foreach (var allowed in options.AllowedMethods)
+        {
+            if (allowed.Equals(method, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 

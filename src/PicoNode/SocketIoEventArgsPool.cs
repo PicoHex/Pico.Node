@@ -9,10 +9,7 @@ internal sealed class SocketIoEventArgsPool : IDisposable
 
     public SocketIoEventArgs Rent()
     {
-        var eventArgs = RentCore();
-        eventArgs.AcceptSocket = null;
-        eventArgs.SetBuffer(null, 0, 0);
-        return eventArgs;
+        return RentCore();
     }
 
     public void Return(SocketIoEventArgs eventArgs)

@@ -209,4 +209,41 @@ public sealed class CorsTests
         var header = headers.FirstOrDefault(h => h.Key == "Access-Control-Expose-Headers");
         await Assert.That(header.Value).IsEqualTo("X-Custom, X-Request-Id");
     }
+
+    [Test]
+    public async Task HandlePreflight_returns_403_for_disallowed_request_method()
+    {
+        var options = new CorsOptions
+        {
+            AllowedOrigins =  ["https://example.com"],
+            AllowedMethods =  ["GET", "POST"],
+        };
+        var request = CreateRequest(
+            "OPTIONS",
+            new("Origin", "https://example.com"),
+            new("Access-Control-Request-Method", "DELETE"),
+            new("Host", "localhost")
+        );
+
+        var response = CorsHandler.HandlePreflight(request, options);
+
+        await Assert.That(response).IsNotNull();
+        await Assert.That(response!.StatusCode).IsEqualTo(403);
+    }
+
+    [Test]
+    public async Task HandlePreflight_allows_matching_request_method()
+    {
+        var request = CreateRequest(
+            "OPTIONS",
+            new("Origin", "https://example.com"),
+            new("Access-Control-Request-Method", "POST"),
+            new("Host", "localhost")
+        );
+
+        var response = CorsHandler.HandlePreflight(request, DefaultOptions);
+
+        await Assert.That(response).IsNotNull();
+        await Assert.That(response!.StatusCode).IsEqualTo(204);
+    }
 }
