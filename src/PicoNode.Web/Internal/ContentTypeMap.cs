@@ -1,4 +1,4 @@
-namespace PicoNode.Web;
+namespace PicoNode.Web.Internal;
 
 internal static class ContentTypeMap
 {

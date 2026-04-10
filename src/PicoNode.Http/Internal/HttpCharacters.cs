@@ -4,20 +4,7 @@ internal static class HttpCharacters
 {
     public static bool IsHttpToken(string value)
     {
-        if (value.Length == 0)
-        {
-            return false;
-        }
-
-        foreach (var character in value)
-        {
-            if (!IsHttpTokenCharacter(character))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return value.Length != 0 && value.All(IsHttpTokenCharacter);
     }
 
     public static bool IsHttpToken(ReadOnlySpan<byte> value)
@@ -40,15 +27,9 @@ internal static class HttpCharacters
 
     public static bool IsValidHeaderValue(string value)
     {
-        foreach (var character in value)
-        {
-            if ((character < 0x20 && character != '\t') || character == 0x7F)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return value.All(
+            character => (character >= 0x20 || character == '\t') && character != 0x7F
+        );
     }
 
     public static bool IsValidHeaderValue(ReadOnlySpan<byte> value)
@@ -66,13 +47,44 @@ internal static class HttpCharacters
 
     public static bool IsHttpTokenCharacter(char character) =>
         char.IsAsciiLetterOrDigit(character)
-        || character is '!' or '#' or '$' or '%' or '&' or '\'' or '*' or '+' or '-' or '.' or '^' or '_' or '`' or '|' or '~';
+        || character
+            is '!'
+                or '#'
+                or '$'
+                or '%'
+                or '&'
+                or '\''
+                or '*'
+                or '+'
+                or '-'
+                or '.'
+                or '^'
+                or '_'
+                or '`'
+                or '|'
+                or '~';
 
     public static bool IsHttpTokenCharacter(byte b) =>
-        b is >= (byte)'A' and <= (byte)'Z'
-            or >= (byte)'a' and <= (byte)'z'
-            or >= (byte)'0' and <= (byte)'9'
-            or (byte)'!' or (byte)'#' or (byte)'$' or (byte)'%' or (byte)'&'
-            or (byte)'\'' or (byte)'*' or (byte)'+' or (byte)'-' or (byte)'.'
-            or (byte)'^' or (byte)'_' or (byte)'`' or (byte)'|' or (byte)'~';
+        b
+            is >= (byte)'A'
+                and <= (byte)'Z'
+                or >= (byte)'a'
+                and <= (byte)'z'
+                or >= (byte)'0'
+                and <= (byte)'9'
+                or (byte)'!'
+                or (byte)'#'
+                or (byte)'$'
+                or (byte)'%'
+                or (byte)'&'
+                or (byte)'\''
+                or (byte)'*'
+                or (byte)'+'
+                or (byte)'-'
+                or (byte)'.'
+                or (byte)'^'
+                or (byte)'_'
+                or (byte)'`'
+                or (byte)'|'
+                or (byte)'~';
 }

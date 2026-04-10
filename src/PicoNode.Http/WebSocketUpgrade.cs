@@ -1,7 +1,3 @@
-using System.Buffers;
-using System.Security.Cryptography;
-using System.Text;
-
 namespace PicoNode.Http;
 
 public static class WebSocketUpgrade
@@ -39,9 +35,9 @@ public static class WebSocketUpgrade
             ReasonPhrase = "Switching Protocols",
             Headers =
             [
-                new("Upgrade", "websocket"),
-                new("Connection", "Upgrade"),
-                new("Sec-WebSocket-Accept", acceptKey),
+                new KeyValuePair<string, string>("Upgrade", "websocket"),
+                new KeyValuePair<string, string>("Connection", "Upgrade"),
+                new KeyValuePair<string, string>("Sec-WebSocket-Accept", acceptKey),
             ],
         };
     }
@@ -55,9 +51,7 @@ public static class WebSocketUpgrade
 
     private static bool HasHeader(HttpRequest request, string name, string expectedValue)
     {
-        if (!request.Headers.TryGetValue(name, out var value))
-            return false;
-
-        return value.Contains(expectedValue, StringComparison.OrdinalIgnoreCase);
+        return request.Headers.TryGetValue(name, out var value)
+            && value.Contains(expectedValue, StringComparison.OrdinalIgnoreCase);
     }
 }

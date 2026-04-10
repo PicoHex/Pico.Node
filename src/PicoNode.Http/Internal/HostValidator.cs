@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace PicoNode.Http.Internal;
 
 internal static class HostValidator
@@ -11,12 +9,14 @@ internal static class HostValidator
             return false;
         }
 
-        foreach (var character in value)
+        if (
+            value.Any(
+                character =>
+                    char.IsWhiteSpace(character) || character is ',' or '/' or '?' or '#' or '@'
+            )
+        )
         {
-            if (char.IsWhiteSpace(character) || character is ',' or '/' or '?' or '#' or '@')
-            {
-                return false;
-            }
+            return false;
         }
 
         if (value.Contains("://", StringComparison.Ordinal))
@@ -33,20 +33,17 @@ internal static class HostValidator
 
         var lastColon = span.LastIndexOf(':');
 
-        if (lastColon >= 0)
+        if (lastColon < 0)
+            return IsValidHostName(span) || IsValidIpv4Address(span);
+        var hostPart = span[..lastColon];
+        var portPart = span[(lastColon + 1)..];
+
+        if (hostPart.Length == 0 || !IsValidPort(portPart))
         {
-            var hostPart = span[..lastColon];
-            var portPart = span[(lastColon + 1)..];
-
-            if (hostPart.Length == 0 || !IsValidPort(portPart))
-            {
-                return false;
-            }
-
-            return IsValidHostName(hostPart) || IsValidIpv4Address(hostPart);
+            return false;
         }
 
-        return IsValidHostName(span) || IsValidIpv4Address(span);
+        return IsValidHostName(hostPart) || IsValidIpv4Address(hostPart);
     }
 
     private static bool TryParseBracketedIpv6Host(ReadOnlySpan<char> value)
@@ -58,8 +55,10 @@ internal static class HostValidator
         }
 
         var addressPart = value[1..closingBracketIndex];
-        if (!System.Net.IPAddress.TryParse(addressPart, out var address)
-            || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+        if (
+            !System.Net.IPAddress.TryParse(addressPart, out var address)
+            || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6
+        )
         {
             return false;
         }
@@ -69,12 +68,8 @@ internal static class HostValidator
             return true;
         }
 
-        if (value[closingBracketIndex + 1] != ':')
-        {
-            return false;
-        }
-
-        return IsValidPort(value[(closingBracketIndex + 2)..]);
+        return value[closingBracketIndex + 1] == ':'
+            && IsValidPort(value[(closingBracketIndex + 2)..]);
     }
 
     private static bool IsValidPort(ReadOnlySpan<char> value)
@@ -146,8 +141,10 @@ internal static class HostValidator
             var dotIndex = value.IndexOf('.');
             var segment = dotIndex >= 0 ? value[..dotIndex] : value;
 
-            if (segment.Length == 0
-                || !byte.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+            if (
+                segment.Length == 0
+                || !byte.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out _)
+            )
             {
                 return false;
             }

@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace PicoNode.Web;
 
 public static class MultipartFormDataParser
@@ -18,10 +16,9 @@ public static class MultipartFormDataParser
             return null;
 
         var boundary = ExtractBoundary(contentType);
-        if (boundary is null)
-            return null;
-
-        return ParseBody(request.Body.Span, Encoding.UTF8.GetBytes(boundary));
+        return boundary is null
+            ? null
+            : ParseBody(request.Body.Span, Encoding.UTF8.GetBytes(boundary));
     }
 
     internal static string? ExtractBoundary(string contentType)
@@ -36,9 +33,7 @@ public static class MultipartFormDataParser
         if (value.Length >= 2 && value[0] == '"')
         {
             var endQuote = value[1..].IndexOf('"');
-            if (endQuote < 0)
-                return null;
-            return value[1..(endQuote + 1)].ToString();
+            return endQuote < 0 ? null : value[1..(endQuote + 1)].ToString();
         }
 
         var end = value.IndexOfAny(';', ' ');
@@ -136,9 +131,7 @@ public static class MultipartFormDataParser
         if (value.Length >= 2 && value[0] == '"')
         {
             var endQuote = value[1..].IndexOf('"');
-            if (endQuote < 0)
-                return null;
-            return value[1..(endQuote + 1)].ToString();
+            return endQuote < 0 ? null : value[1..(endQuote + 1)].ToString();
         }
 
         var end = value.IndexOfAny([';', ' ', '\r', '\n']);
@@ -147,18 +140,14 @@ public static class MultipartFormDataParser
 
     private static string? GetPartHeaderValue(string headers, string headerName)
     {
-        foreach (var line in headers.Split("\r\n"))
-        {
-            var colonIdx = line.IndexOf(':');
-            if (colonIdx <= 0)
-                continue;
-
-            var key = line[..colonIdx].Trim();
-            if (key.Equals(headerName, StringComparison.OrdinalIgnoreCase))
-                return line[(colonIdx + 1)..].Trim();
-        }
-
-        return null;
+        return (
+            from line in headers.Split("\r\n")
+            let colonIdx = line.IndexOf(':')
+            where colonIdx > 0
+            let key = line[..colonIdx].Trim()
+            where key.Equals(headerName, StringComparison.OrdinalIgnoreCase)
+            select line[(colonIdx + 1)..].Trim()
+        ).FirstOrDefault();
     }
 
     private static string? GetHeaderValue(
@@ -166,13 +155,11 @@ public static class MultipartFormDataParser
         string name
     )
     {
-        foreach (var header in headers)
-        {
-            if (header.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
-                return header.Value;
-        }
-
-        return null;
+        return (
+            from header in headers
+            where header.Key.Equals(name, StringComparison.OrdinalIgnoreCase)
+            select header.Value
+        ).FirstOrDefault();
     }
 
     private static int IndexOf(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needle)

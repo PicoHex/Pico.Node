@@ -1,5 +1,3 @@
-using PicoNode.Web.Internal;
-
 namespace PicoNode.Web;
 
 internal sealed class WebRouter
@@ -145,12 +143,8 @@ internal sealed class WebRouter
             );
         }
 
-        if (_fallbackHandler is not null)
-        {
-            return _fallbackHandler(context, cancellationToken);
-        }
-
-        return ValueTask.FromResult(NotFoundResponse);
+        return _fallbackHandler?.Invoke(context, cancellationToken)
+            ?? ValueTask.FromResult(NotFoundResponse);
     }
 
     private sealed class CompiledRoute(

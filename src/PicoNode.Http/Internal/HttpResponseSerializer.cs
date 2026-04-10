@@ -8,7 +8,7 @@ internal static class HttpResponseSerializer
     private const string ServerHeaderName = "Server";
     private const string CloseConnectionHeaderValue = "close";
     private const string ChunkedHeaderValue = "chunked";
-    private static readonly System.Text.Encoding HeaderEncoding = System.Text.Encoding.ASCII;
+    private static readonly Encoding HeaderEncoding = Encoding.ASCII;
     private static readonly byte[] ChunkTerminatorBytes = "0\r\n\r\n"u8.ToArray();
     private static readonly byte[] CrLfBytes = "\r\n"u8.ToArray();
 

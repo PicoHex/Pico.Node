@@ -1,5 +1,3 @@
-using System.Buffers;
-
 namespace PicoNode.Http;
 
 public static class WebSocketFrameCodec
@@ -95,10 +93,16 @@ public static class WebSocketFrameCodec
     )
     {
         var headerSize = 2;
-        if (payload.Length >= 126 && payload.Length <= 65535)
-            headerSize += 2;
-        else if (payload.Length > 65535)
-            headerSize += 8;
+        switch (payload.Length)
+        {
+            case >= 126
+            and <= 65535:
+                headerSize += 2;
+                break;
+            case > 65535:
+                headerSize += 8;
+                break;
+        }
 
         byte[] maskKey = [];
         if (mask)
@@ -113,23 +117,26 @@ public static class WebSocketFrameCodec
 
         result[pos++] = (byte)(0x80 | (byte)opCode);
 
-        if (payload.Length < 126)
+        switch (payload.Length)
         {
-            result[pos++] = (byte)((mask ? 0x80 : 0) | payload.Length);
-        }
-        else if (payload.Length <= 65535)
-        {
-            result[pos++] = (byte)((mask ? 0x80 : 0) | 126);
-            result[pos++] = (byte)(payload.Length >> 8);
-            result[pos++] = (byte)(payload.Length & 0xFF);
-        }
-        else
-        {
-            result[pos++] = (byte)((mask ? 0x80 : 0) | 127);
-            var len = (long)payload.Length;
-            for (var i = 7; i >= 0; i--)
+            case < 126:
+                result[pos++] = (byte)((mask ? 0x80 : 0) | payload.Length);
+                break;
+            case <= 65535:
+                result[pos++] = (byte)((mask ? 0x80 : 0) | 126);
+                result[pos++] = (byte)(payload.Length >> 8);
+                result[pos++] = (byte)(payload.Length & 0xFF);
+                break;
+            default:
             {
-                result[pos++] = (byte)((len >> (i * 8)) & 0xFF);
+                result[pos++] = (byte)((mask ? 0x80 : 0) | 127);
+                var len = (long)payload.Length;
+                for (var i = 7; i >= 0; i--)
+                {
+                    result[pos++] = (byte)((len >> (i * 8)) & 0xFF);
+                }
+
+                break;
             }
         }
 

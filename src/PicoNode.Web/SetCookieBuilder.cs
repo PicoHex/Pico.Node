@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace PicoNode.Web;
 
 public sealed class SetCookieBuilder
@@ -66,7 +64,7 @@ public sealed class SetCookieBuilder
 
     public KeyValuePair<string, string> Build()
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         sb.Append(_name).Append('=').Append(_value);
 
         if (_domain is not null)

@@ -1,17 +1,15 @@
 namespace PicoNode.Abs;
 
-public readonly struct NodeFault
+public readonly record struct NodeFault(
+    NodeFaultCode Code,
+    string Operation,
+    Exception? Exception = null
+)
 {
-    public NodeFault(NodeFaultCode code, string operation, Exception? exception = null)
-    {
-        Code = code;
-        Operation = operation ?? throw new ArgumentNullException(nameof(operation));
-        Exception = exception;
-    }
+    public NodeFaultCode Code { get; } = Code;
 
-    public NodeFaultCode Code { get; }
+    public string Operation { get; } =
+        Operation ?? throw new ArgumentNullException(nameof(Operation));
 
-    public string Operation { get; }
-
-    public Exception? Exception { get; }
+    public Exception? Exception { get; } = Exception;
 }

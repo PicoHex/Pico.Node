@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace PicoNode.Web;
 
 public sealed class StaticFileMiddleware
@@ -56,12 +54,10 @@ public sealed class StaticFileMiddleware
         var relativePath = requestPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
         var fullPath = Path.GetFullPath(Path.Combine(_rootPath, relativePath));
 
-        if (!fullPath.StartsWith(_rootPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return await next(context, cancellationToken);
-        }
-
-        if (!File.Exists(fullPath))
+        if (
+            !fullPath.StartsWith(_rootPath, StringComparison.OrdinalIgnoreCase)
+            || !File.Exists(fullPath)
+        )
         {
             return await next(context, cancellationToken);
         }

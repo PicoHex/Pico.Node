@@ -8,8 +8,7 @@ public sealed class HttpRequest
 
     public string Version { get; init; } = "HTTP/1.1";
 
-    public IReadOnlyList<KeyValuePair<string, string>> HeaderFields { get; init; } =
-        Array.Empty<KeyValuePair<string, string>>();
+    public IReadOnlyList<KeyValuePair<string, string>> HeaderFields { get; init; } = [];
 
     public IReadOnlyDictionary<string, string> Headers { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

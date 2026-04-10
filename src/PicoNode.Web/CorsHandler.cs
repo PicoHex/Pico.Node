@@ -10,12 +10,10 @@ public static class CorsHandler
         if (!request.Headers.TryGetValue("Origin", out var origin))
             return null;
 
-        if (!IsOriginAllowed(origin, options))
-            return new HttpResponse { StatusCode = 403 };
-
         if (
-            request.Headers.TryGetValue("Access-Control-Request-Method", out var requestMethod)
-            && !IsMethodAllowed(requestMethod, options)
+            !IsOriginAllowed(origin, options)
+            || request.Headers.TryGetValue("Access-Control-Request-Method", out var requestMethod)
+                && !IsMethodAllowed(requestMethod, options)
         )
             return new HttpResponse { StatusCode = 403 };
 
@@ -27,10 +25,17 @@ public static class CorsHandler
         };
 
         if (options.AllowCredentials)
-            headers.Add(new("Access-Control-Allow-Credentials", "true"));
+            headers.Add(
+                new KeyValuePair<string, string>("Access-Control-Allow-Credentials", "true")
+            );
 
         if (options.MaxAge.HasValue)
-            headers.Add(new("Access-Control-Max-Age", options.MaxAge.Value.ToString()));
+            headers.Add(
+                new KeyValuePair<string, string>(
+                    "Access-Control-Max-Age",
+                    options.MaxAge.Value.ToString()
+                )
+            );
 
         return new HttpResponse { StatusCode = 204, Headers = headers, };
     }
@@ -40,10 +45,10 @@ public static class CorsHandler
         CorsOptions options
     )
     {
-        if (!request.Headers.TryGetValue("Origin", out var origin))
-            return [];
-
-        if (!IsOriginAllowed(origin, options))
+        if (
+            !request.Headers.TryGetValue("Origin", out var origin)
+            || !IsOriginAllowed(origin, options)
+        )
             return [];
 
         var headers = new List<KeyValuePair<string, string>>
@@ -52,11 +57,16 @@ public static class CorsHandler
         };
 
         if (options.AllowCredentials)
-            headers.Add(new("Access-Control-Allow-Credentials", "true"));
+            headers.Add(
+                new KeyValuePair<string, string>("Access-Control-Allow-Credentials", "true")
+            );
 
         if (options.ExposedHeaders.Count > 0)
             headers.Add(
-                new("Access-Control-Expose-Headers", string.Join(", ", options.ExposedHeaders))
+                new KeyValuePair<string, string>(
+                    "Access-Control-Expose-Headers",
+                    string.Join(", ", options.ExposedHeaders)
+                )
             );
 
         return headers;
@@ -67,23 +77,18 @@ public static class CorsHandler
         if (options.AllowedOrigins.Count == 0)
             return false;
 
-        foreach (var allowed in options.AllowedOrigins)
-        {
-            if (allowed == "*" || allowed.Equals(origin, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
+        return options
+            .AllowedOrigins
+            .Any(
+                allowed =>
+                    allowed == "*" || allowed.Equals(origin, StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     private static bool IsMethodAllowed(string method, CorsOptions options)
     {
-        foreach (var allowed in options.AllowedMethods)
-        {
-            if (allowed.Equals(method, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
+        return options
+            .AllowedMethods
+            .Any(allowed => allowed.Equals(method, StringComparison.OrdinalIgnoreCase));
     }
 }

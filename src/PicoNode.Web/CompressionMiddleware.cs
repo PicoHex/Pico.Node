@@ -1,6 +1,3 @@
-using System.IO;
-using System.IO.Compression;
-
 namespace PicoNode.Web;
 
 public sealed class CompressionMiddleware

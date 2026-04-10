@@ -1,5 +1,3 @@
-using System.Buffers;
-
 namespace PicoNode.Http;
 
 public static class Http2FrameCodec

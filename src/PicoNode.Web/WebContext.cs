@@ -1,5 +1,3 @@
-using PicoNode.Web.Internal;
-
 namespace PicoNode.Web;
 
 public sealed class WebContext
