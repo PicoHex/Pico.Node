@@ -181,6 +181,8 @@ public sealed class UdpNode : INode, IAsyncDisposable
             return;
         }
 
+        var stopCompleted = false;
+
         lock (_stateLock)
         {
             if (_state is NodeState.Stopped or NodeState.Disposed or NodeState.Created)
@@ -215,6 +217,7 @@ public sealed class UdpNode : INode, IAsyncDisposable
             }
 
             await Task.WhenAll(_workers).WaitAsync(cancellationToken);
+            stopCompleted = true;
         }
         catch (OperationCanceledException)
         {
@@ -227,7 +230,7 @@ public sealed class UdpNode : INode, IAsyncDisposable
         {
             lock (_stateLock)
             {
-                if (_state != NodeState.Disposed)
+                if (_state != NodeState.Disposed && stopCompleted)
                 {
                     _state = NodeState.Stopped;
                 }
