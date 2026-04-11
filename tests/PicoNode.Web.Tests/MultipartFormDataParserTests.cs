@@ -271,4 +271,87 @@ public sealed class MultipartFormDataParserTests
 
         await Assert.That(boundary).IsEqualTo("simple");
     }
+
+    [Test]
+    public async Task Returns_null_for_empty_boundary_parameter()
+    {
+        var boundary = MultipartFormDataParser.ExtractBoundary("multipart/form-data; boundary=");
+
+        await Assert.That(boundary).IsNull();
+    }
+
+    [Test]
+    public async Task Returns_null_for_boundary_with_invalid_separator_characters()
+    {
+        var boundary = MultipartFormDataParser.ExtractBoundary(
+            "multipart/form-data; boundary=bad(boundary)"
+        );
+
+        await Assert.That(boundary).IsNull();
+    }
+
+    [Test]
+    public async Task Skips_text_field_with_invalid_utf8_bytes()
+    {
+        var boundary = "boundary"u8.ToArray();
+        var headerPrefix = Encoding.ASCII.GetBytes(
+            "--boundary\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\n"
+        );
+        var footer = Encoding.ASCII.GetBytes("\r\n--boundary--\r\n");
+        var bodyBytes = new byte[headerPrefix.Length + 2 + footer.Length];
+
+        headerPrefix.CopyTo(bodyBytes, 0);
+        bodyBytes[headerPrefix.Length] = 0xC3;
+        bodyBytes[headerPrefix.Length + 1] = 0x28;
+        footer.CopyTo(bodyBytes, headerPrefix.Length + 2);
+
+        var request = CreateMultipartRequest(new string(boundary.Select(static b => (char)b).ToArray()), bodyBytes);
+        var result = MultipartFormDataParser.Parse(request);
+
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.Fields.Count).IsEqualTo(0);
+        await Assert.That(result.Files.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Skips_part_with_invalid_utf8_headers()
+    {
+        var headerPrefix = Encoding.ASCII.GetBytes("--boundary\r\nContent-Disposition: form-data; name=\"");
+        var headerSuffix = Encoding.ASCII.GetBytes("\"\r\n\r\nalice\r\n--boundary--\r\n");
+        var bodyBytes = new byte[headerPrefix.Length + 1 + headerSuffix.Length];
+
+        headerPrefix.CopyTo(bodyBytes, 0);
+        bodyBytes[headerPrefix.Length] = 0xFF;
+        headerSuffix.CopyTo(bodyBytes, headerPrefix.Length + 1);
+
+        var request = CreateMultipartRequest("boundary", bodyBytes);
+        var result = MultipartFormDataParser.Parse(request);
+
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.Fields.Count).IsEqualTo(0);
+        await Assert.That(result.Files.Count).IsEqualTo(0);
+    }
+
+    private static HttpRequest CreateMultipartRequest(string boundary, byte[] bodyBytes)
+    {
+        return new HttpRequest
+        {
+            Method = "POST",
+            Target = "/upload",
+            Version = "HTTP/1.1",
+            HeaderFields =
+            [
+                new("Content-Type", $"multipart/form-data; boundary={boundary}"),
+                new("Content-Length", bodyBytes.Length.ToString()),
+                new("Host", "localhost"),
+            ],
+            Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Content-Type"] = $"multipart/form-data; boundary={boundary}",
+                ["Content-Length"] = bodyBytes.Length.ToString(),
+                ["Host"] = "localhost",
+            },
+            Body = bodyBytes,
+        };
+    }
 }

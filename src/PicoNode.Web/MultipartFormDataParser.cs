@@ -1,7 +1,10 @@
 namespace PicoNode.Web;
 
+using System.Text;
+
 public static class MultipartFormDataParser
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     private static readonly byte[] CrLf = "\r\n"u8.ToArray();
     private static readonly byte[] DoubleCrLf = "\r\n\r\n"u8.ToArray();
     private static readonly byte[] DashDash = "--"u8.ToArray();
@@ -28,7 +31,8 @@ public static class MultipartFormDataParser
         if (idx < 0)
             return null;
 
-        return ExtractValue(span[(idx + 9)..], [';', ' ']);
+        var boundary = ExtractValue(span[(idx + 9)..], [';', ' ']);
+        return IsValidBoundary(boundary) ? boundary : null;
     }
 
     private static MultipartFormData ParseBody(ReadOnlyMemory<byte> body, byte[] boundary)
@@ -93,7 +97,10 @@ public static class MultipartFormDataParser
         List<MultipartFormFile> files
     )
     {
-        var headers = Encoding.UTF8.GetString(headerBytes);
+        var headers = DecodeUtf8(headerBytes);
+        if (headers is null)
+            return;
+
         var disposition = GetPartHeaderValue(headers, "Content-Disposition");
         if (disposition is null)
             return;
@@ -111,7 +118,11 @@ public static class MultipartFormDataParser
         }
         else
         {
-            fields.Add(new MultipartFormField(name, Encoding.UTF8.GetString(content.Span)));
+            var fieldValue = DecodeUtf8(content.Span);
+            if (fieldValue is null)
+                return;
+
+            fields.Add(new MultipartFormField(name, fieldValue));
         }
     }
 
@@ -213,5 +224,35 @@ public static class MultipartFormDataParser
             return true;
 
         return remaining.StartsWith(DashDash);
+    }
+
+    private static string? DecodeUtf8(ReadOnlySpan<byte> value)
+    {
+        try
+        {
+            return StrictUtf8.GetString(value);
+        }
+        catch (DecoderFallbackException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsValidBoundary(string? boundary)
+    {
+        if (string.IsNullOrEmpty(boundary) || boundary.Length > 70)
+        {
+            return false;
+        }
+
+        foreach (var ch in boundary)
+        {
+            if (ch <= 0x20 || ch >= 0x7F || ch is '"' or '(' or ')' or ',' or '/' or ':' or ';' or '<' or '=' or '>' or '?' or '@' or '[' or '\\' or ']')
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
