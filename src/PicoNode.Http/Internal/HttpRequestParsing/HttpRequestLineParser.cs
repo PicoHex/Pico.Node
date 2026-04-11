@@ -1,0 +1,98 @@
+namespace PicoNode.Http.Internal.HttpRequestParsing;
+
+internal static class HttpRequestLineParser
+{
+    private static readonly SearchValues<byte> InvalidTargetBytes = SearchValues.Create(
+        " \t\r\n#"u8
+    );
+
+    public static bool TryParse(
+        ReadOnlySpan<byte> line,
+        out string method,
+        out string target,
+        out string version
+    )
+    {
+        method = string.Empty;
+        target = string.Empty;
+        version = string.Empty;
+
+        var firstSpace = line.IndexOf((byte)' ');
+        if (firstSpace <= 0)
+        {
+            return false;
+        }
+
+        var rest = line[(firstSpace + 1)..];
+        var secondSpace = rest.IndexOf((byte)' ');
+        if (secondSpace <= 0)
+        {
+            return false;
+        }
+
+        var versionSpan = rest[(secondSpace + 1)..];
+        if (versionSpan.IndexOf((byte)' ') >= 0)
+        {
+            return false;
+        }
+
+        var methodSpan = line[..firstSpace];
+        var targetSpan = rest[..secondSpace];
+
+        if (!HttpCharacters.IsHttpToken(methodSpan) || !IsRequestTarget(targetSpan))
+        {
+            return false;
+        }
+
+        if (versionSpan.SequenceEqual("HTTP/1.1"u8))
+        {
+            version = "HTTP/1.1";
+        }
+        else if (versionSpan.SequenceEqual("HTTP/1.0"u8))
+        {
+            version = "HTTP/1.0";
+        }
+        else
+        {
+            return false;
+        }
+
+        method = Encoding.ASCII.GetString(methodSpan);
+        target = Encoding.ASCII.GetString(targetSpan);
+        return true;
+    }
+
+    private static bool IsRequestTarget(ReadOnlySpan<byte> value)
+    {
+        if (value.Length == 0 || value[0] != (byte)'/')
+        {
+            return false;
+        }
+
+        if (value.IndexOfAny(InvalidTargetBytes) >= 0)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (value[index] != (byte)'%')
+            {
+                continue;
+            }
+
+            if (
+                index + 2 >= value.Length
+                || !HttpParseHelpers.IsHexDigit(value[index + 1])
+                || !HttpParseHelpers.IsHexDigit(value[index + 2])
+            )
+            {
+                return false;
+            }
+
+            index += 2;
+        }
+
+        return true;
+    }
+}
