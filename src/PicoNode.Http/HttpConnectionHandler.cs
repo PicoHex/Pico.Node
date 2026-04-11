@@ -1,5 +1,7 @@
 namespace PicoNode.Http;
 
+using PicoNode.Http.Internal.ConnectionRuntime;
+
 public sealed class HttpConnectionHandler : ITcpConnectionHandler
 {
     private static readonly HttpResponse InternalServerErrorResponse =
@@ -10,6 +12,7 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
     private readonly HttpConnectionHandlerOptions _options;
     private readonly HttpRequestHandler _requestHandler;
     private readonly ConcurrentDictionary<long, byte> _continueSent = new();
+    private readonly ConcurrentDictionary<long, ConnectionProtocol> _protocols = new();
 
     public HttpConnectionHandler(HttpConnectionHandlerOptions options)
     {
@@ -36,6 +39,51 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
     ) => Task.CompletedTask;
 
     public ValueTask<SequencePosition> OnReceivedAsync(
+        ITcpConnectionContext connection,
+        ReadOnlySequence<byte> buffer,
+        CancellationToken cancellationToken
+    )
+    {
+        if (_protocols.TryGetValue(connection.ConnectionId, out var protocol))
+        {
+            return protocol switch
+            {
+                ConnectionProtocol.WebSocket => WebSocketConnectionProcessor.ProcessAsync(
+                    connection,
+                    buffer,
+                    cancellationToken
+                ),
+                ConnectionProtocol.Http2 => Http2ConnectionProcessor.ProcessAsync(
+                    connection,
+                    buffer,
+                    sendInitialSettings: false,
+                    cancellationToken
+                ),
+                _ => HandleHttp1Async(connection, buffer, cancellationToken),
+            };
+        }
+
+        var protocolDecision = DetectProtocol(buffer);
+        switch (protocolDecision.Kind)
+        {
+            case DetectedProtocolKind.IncompleteHttp2Preface:
+                return ValueTask.FromResult(buffer.Start);
+            case DetectedProtocolKind.Http2:
+                _protocols[connection.ConnectionId] = ConnectionProtocol.Http2;
+                return Http2ConnectionProcessor.ProcessAsync(
+                    connection,
+                    protocolDecision.Buffer,
+                    sendInitialSettings: true,
+                    cancellationToken
+                );
+            case DetectedProtocolKind.Http1:
+            default:
+                _protocols[connection.ConnectionId] = ConnectionProtocol.Http1;
+                return HandleHttp1Async(connection, buffer, cancellationToken);
+        }
+    }
+
+    private ValueTask<SequencePosition> HandleHttp1Async(
         ITcpConnectionContext connection,
         ReadOnlySequence<byte> buffer,
         CancellationToken cancellationToken
@@ -70,6 +118,7 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
     )
     {
         _continueSent.TryRemove(connection.ConnectionId, out _);
+        _protocols.TryRemove(connection.ConnectionId, out _);
         return Task.CompletedTask;
     }
 
@@ -124,6 +173,11 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
             else
             {
                 await SendResponseAsync(connection, response, shouldClose, cancellationToken);
+            }
+
+            if (WebSocketUpgrade.IsUpgradeResponse(response))
+            {
+                _protocols[connection.ConnectionId] = ConnectionProtocol.WebSocket;
             }
 
             return consumed;
@@ -307,5 +361,45 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
         }
 
         return isHttp10;
+    }
+
+    private static ProtocolDecision DetectProtocol(ReadOnlySequence<byte> buffer)
+    {
+        var preface = Http2FrameCodec.ClientPreface;
+        if (buffer.Length == 0)
+        {
+            return new ProtocolDecision(DetectedProtocolKind.Http1, buffer);
+        }
+
+        var candidateLength = (int)Math.Min(buffer.Length, preface.Length);
+        Span<byte> candidate = stackalloc byte[candidateLength];
+        buffer.Slice(0, candidateLength).CopyTo(candidate);
+
+        if (!candidate.SequenceEqual(preface[..candidateLength]))
+        {
+            return new ProtocolDecision(DetectedProtocolKind.Http1, buffer);
+        }
+
+        if (buffer.Length < preface.Length)
+        {
+            return new ProtocolDecision(DetectedProtocolKind.IncompleteHttp2Preface, buffer);
+        }
+
+        return new ProtocolDecision(
+            DetectedProtocolKind.Http2,
+            buffer.Slice(preface.Length)
+        );
+    }
+
+    private readonly record struct ProtocolDecision(
+        DetectedProtocolKind Kind,
+        ReadOnlySequence<byte> Buffer
+    );
+
+    private enum DetectedProtocolKind
+    {
+        Http1,
+        IncompleteHttp2Preface,
+        Http2,
     }
 }

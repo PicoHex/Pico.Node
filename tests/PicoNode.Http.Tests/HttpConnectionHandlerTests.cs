@@ -672,6 +672,247 @@ public sealed class HttpConnectionHandlerTests
         await Assert.That(Encoding.ASCII.GetString(context.LastSent)).Contains("HTTP/1.1 200 OK");
     }
 
+    [Test]
+    public async Task OnReceivedAsync_keeps_partial_http2_preface_buffered_without_sending()
+    {
+        var prefix = Encoding.ASCII.GetBytes("PRI * HTTP/2.0\r\n");
+        var buffer = new ReadOnlySequence<byte>(prefix);
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            static (_, _) => throw new InvalidOperationException("should not be called")
+        );
+
+        var consumed = await handler.OnReceivedAsync(context, buffer, CancellationToken.None);
+
+        await Assert.That(buffer.Slice(consumed).Length).IsEqualTo(buffer.Length);
+        await Assert.That(context.SendCount).IsEqualTo(0);
+        await Assert.That(context.CloseCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_http1_path_is_unchanged_when_http2_preface_does_not_match()
+    {
+        var request = Encoding.ASCII.GetBytes("POST / HTTP/1.1\r\nHost: example.com\r\n\r\n");
+        var buffer = new ReadOnlySequence<byte>(request);
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            static (_, _) =>
+                ValueTask.FromResult(new HttpResponse { StatusCode = 204, ReasonPhrase = "No Content" })
+        );
+
+        var consumed = await handler.OnReceivedAsync(context, buffer, CancellationToken.None);
+
+        await Assert.That(buffer.Slice(consumed).Length).IsEqualTo(0);
+        await Assert.That(context.SendCount).IsEqualTo(1);
+        await Assert.That(Encoding.ASCII.GetString(context.LastSent)).Contains("HTTP/1.1 204 No Content");
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_switches_connection_to_websocket_mode_after_101()
+    {
+        var requestBytes = Encoding.ASCII.GetBytes(
+            "GET /ws HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Upgrade: websocket\r\n"
+                + "Connection: Upgrade\r\n"
+                + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                + "Sec-WebSocket-Version: 13\r\n\r\n"
+        );
+
+        var buffer = new ReadOnlySequence<byte>(requestBytes);
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            (request, _) => ValueTask.FromResult(WebSocketUpgrade.TryUpgrade(request)!)
+        );
+
+        await handler.OnReceivedAsync(context, buffer, CancellationToken.None);
+
+        var ping = WebSocketFrameCodec.EncodeFrame(WebSocketOpCode.Ping, "ping"u8);
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(ping),
+            CancellationToken.None
+        );
+
+        await Assert.That(context.SendCount).IsEqualTo(2);
+        await Assert.That(Encoding.ASCII.GetString(context.AllSent[0])).Contains("101 Switching Protocols");
+
+        var success = WebSocketFrameCodec.TryReadFrame(
+            new ReadOnlySequence<byte>(context.AllSent[1]),
+            out var pong,
+            out _
+        );
+        await Assert.That(success).IsTrue();
+        await Assert.That(pong!.OpCode).IsEqualTo(WebSocketOpCode.Pong);
+        await Assert.That(Encoding.UTF8.GetString(pong.Payload.Span)).IsEqualTo("ping");
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_websocket_close_frame_sends_close_and_closes_connection()
+    {
+        var requestBytes = Encoding.ASCII.GetBytes(
+            "GET /ws HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Upgrade: websocket\r\n"
+                + "Connection: Upgrade\r\n"
+                + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                + "Sec-WebSocket-Version: 13\r\n\r\n"
+        );
+
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            (request, _) => ValueTask.FromResult(WebSocketUpgrade.TryUpgrade(request)!)
+        );
+
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(requestBytes),
+            CancellationToken.None
+        );
+
+        var close = WebSocketFrameCodec.EncodeFrame(WebSocketOpCode.Close, []);
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(close),
+            CancellationToken.None
+        );
+
+        await Assert.That(context.CloseCount).IsEqualTo(1);
+        var success = WebSocketFrameCodec.TryReadFrame(
+            new ReadOnlySequence<byte>(context.AllSent[1]),
+            out var closeFrame,
+            out _
+        );
+        await Assert.That(success).IsTrue();
+        await Assert.That(closeFrame!.OpCode).IsEqualTo(WebSocketOpCode.Close);
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_detects_http2_preface_and_sends_settings()
+    {
+        var buffer = new ReadOnlySequence<byte>(Http2FrameCodec.ClientPreface.ToArray());
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            static (_, _) => throw new InvalidOperationException("should not be called")
+        );
+
+        var consumed = await handler.OnReceivedAsync(context, buffer, CancellationToken.None);
+
+        await Assert.That(buffer.Slice(consumed).Length).IsEqualTo(0);
+        await Assert.That(context.SendCount).IsEqualTo(1);
+        var success = Http2FrameCodec.TryReadFrame(
+            new ReadOnlySequence<byte>(context.LastSent),
+            out var frame,
+            out _
+        );
+        await Assert.That(success).IsTrue();
+        await Assert.That(frame!.Type).IsEqualTo(Http2FrameType.Settings);
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_acks_client_settings_on_http2_connection()
+    {
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            static (_, _) => throw new InvalidOperationException("should not be called")
+        );
+
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(Http2FrameCodec.ClientPreface.ToArray()),
+            CancellationToken.None
+        );
+
+        var settings = Http2FrameCodec.EncodeSettings(
+            new Http2Setting(Http2SettingId.MaxConcurrentStreams, 100)
+        );
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(settings),
+            CancellationToken.None
+        );
+
+        await Assert.That(context.SendCount).IsEqualTo(2);
+        var success = Http2FrameCodec.TryReadFrame(
+            new ReadOnlySequence<byte>(context.AllSent[1]),
+            out var ack,
+            out _
+        );
+        await Assert.That(success).IsTrue();
+        await Assert.That(ack!.Type).IsEqualTo(Http2FrameType.Settings);
+        await Assert.That(ack.HasFlag(Http2FrameFlags.Ack)).IsTrue();
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_acks_http2_ping()
+    {
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            static (_, _) => throw new InvalidOperationException("should not be called")
+        );
+
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(Http2FrameCodec.ClientPreface.ToArray()),
+            CancellationToken.None
+        );
+
+        var ping = Http2FrameCodec.EncodePing([1, 2, 3, 4, 5, 6, 7, 8]);
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(ping),
+            CancellationToken.None
+        );
+
+        await Assert.That(context.SendCount).IsEqualTo(2);
+        var success = Http2FrameCodec.TryReadFrame(
+            new ReadOnlySequence<byte>(context.AllSent[1]),
+            out var ack,
+            out _
+        );
+        await Assert.That(success).IsTrue();
+        await Assert.That(ack!.Type).IsEqualTo(Http2FrameType.Ping);
+        await Assert.That(ack.HasFlag(Http2FrameFlags.Ack)).IsTrue();
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_sends_goaway_when_http2_headers_frame_arrives()
+    {
+        var context = new RecordingConnectionContext();
+        var handler = CreateHandler(
+            static (_, _) => throw new InvalidOperationException("should not be called")
+        );
+
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(Http2FrameCodec.ClientPreface.ToArray()),
+            CancellationToken.None
+        );
+
+        var headersFrame = Http2FrameCodec.EncodeFrame(
+            Http2FrameType.Headers,
+            Http2FrameFlags.EndHeaders,
+            1,
+            [0x82]
+        );
+
+        await handler.OnReceivedAsync(
+            context,
+            new ReadOnlySequence<byte>(headersFrame),
+            CancellationToken.None
+        );
+
+        await Assert.That(context.CloseCount).IsEqualTo(1);
+        await Assert.That(context.SendCount).IsEqualTo(2);
+        var success = Http2FrameCodec.TryReadFrame(
+            new ReadOnlySequence<byte>(context.AllSent[1]),
+            out var goAway,
+            out _
+        );
+        await Assert.That(success).IsTrue();
+        await Assert.That(goAway!.Type).IsEqualTo(Http2FrameType.GoAway);
+    }
+
     private static HttpConnectionHandler CreateHandler(HttpRequestHandler requestHandler) =>
         new(new HttpConnectionHandlerOptions { RequestHandler = requestHandler });
 
