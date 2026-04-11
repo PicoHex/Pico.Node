@@ -36,7 +36,11 @@ public sealed class StaticFileMiddlewareTests
         );
 
         await Assert.That(response.StatusCode).IsEqualTo(200);
-        await Assert.That(Encoding.UTF8.GetString(response.Body.Span)).IsEqualTo("<h1>Hello</h1>");
+        await Assert.That(response.Body.IsEmpty).IsTrue();
+        await Assert.That(response.BodyStream).IsNotNull();
+        await using var bodyStream = response.BodyStream!;
+        using var reader = new StreamReader(bodyStream, Encoding.UTF8, leaveOpen: false);
+        await Assert.That(await reader.ReadToEndAsync()).IsEqualTo("<h1>Hello</h1>");
         await Assert
             .That(response.Headers)
             .Contains(new KeyValuePair<string, string>("Content-Type", "text/html; charset=utf-8"));
@@ -56,7 +60,32 @@ public sealed class StaticFileMiddlewareTests
         );
 
         await Assert.That(response.StatusCode).IsEqualTo(200);
-        await Assert.That(Encoding.UTF8.GetString(response.Body.Span)).IsEqualTo("home");
+        await Assert.That(response.Body.IsEmpty).IsTrue();
+        await Assert.That(response.BodyStream).IsNotNull();
+        await using var bodyStream = response.BodyStream!;
+        using var reader = new StreamReader(bodyStream, Encoding.UTF8, leaveOpen: false);
+        await Assert.That(await reader.ReadToEndAsync()).IsEqualTo("home");
+    }
+
+    [Test]
+    public async Task Head_returns_content_length_without_body_stream()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "page.html"), "<h1>Hello</h1>");
+        var middleware = new StaticFileMiddleware(_tempDir);
+        var context = CreateContext("HEAD", "/page.html");
+
+        var response = await middleware.InvokeAsync(
+            context,
+            NotFoundHandler,
+            CancellationToken.None
+        );
+
+        await Assert.That(response.StatusCode).IsEqualTo(200);
+        await Assert.That(response.Body.IsEmpty).IsTrue();
+        await Assert.That(response.BodyStream).IsNull();
+        await Assert
+            .That(response.Headers)
+            .Contains(new KeyValuePair<string, string>("Content-Length", "14"));
     }
 
     [Test]
@@ -131,6 +160,8 @@ public sealed class StaticFileMiddlewareTests
         );
 
         await Assert.That(response.StatusCode).IsEqualTo(200);
+        await Assert.That(response.BodyStream).IsNotNull();
+        await using (response.BodyStream!) { }
         await Assert
             .That(response.Headers)
             .Contains(new KeyValuePair<string, string>("Content-Type", "text/css; charset=utf-8"));
@@ -165,6 +196,8 @@ public sealed class StaticFileMiddlewareTests
             CancellationToken.None
         );
 
+        await Assert.That(response.BodyStream).IsNotNull();
+        await using (response.BodyStream!) { }
         await Assert
             .That(response.Headers)
             .Contains(

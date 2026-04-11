@@ -78,9 +78,19 @@ public sealed class StaticFileMiddleware
             StatusCode = 200,
             ReasonPhrase = "OK",
             Headers = headers,
-            Body = isHead
-                ? ReadOnlyMemory<byte>.Empty
-                : await File.ReadAllBytesAsync(fullPath, cancellationToken),
+            Body = ReadOnlyMemory<byte>.Empty,
+            BodyStream = isHead
+                ? null
+                : new FileStream(
+                    fullPath,
+                    new FileStreamOptions
+                    {
+                        Access = FileAccess.Read,
+                        Mode = FileMode.Open,
+                        Share = FileShare.Read,
+                        Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+                    }
+                ),
         };
     }
 }
