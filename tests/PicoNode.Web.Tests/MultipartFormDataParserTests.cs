@@ -291,6 +291,54 @@ public sealed class MultipartFormDataParserTests
     }
 
     [Test]
+    public async Task Returns_null_when_boundary_exceeds_configured_max_length()
+    {
+        var boundary = MultipartFormDataParser.ExtractBoundary(
+            "multipart/form-data; boundary=abcdef",
+            maxBoundaryLength: 5
+        );
+
+        await Assert.That(boundary).IsNull();
+    }
+
+    [Test]
+    public async Task Parse_rejects_invalid_boundary_length_option_values()
+    {
+        var request = CreateMultipartRequest("boundary", Encoding.ASCII.GetBytes("--boundary--\r\n"));
+
+        await Assert
+            .That(() => MultipartFormDataParser.Parse(request, new MultipartFormDataParserOptions { MaxBoundaryLength = 0 }))
+            .Throws<ArgumentOutOfRangeException>();
+
+        await Assert
+            .That(
+                () =>
+                    MultipartFormDataParser.Parse(
+                        request,
+                        new MultipartFormDataParserOptions
+                        {
+                            MaxBoundaryLength = MultipartFormDataParserOptions.DefaultMaxBoundaryLength + 1,
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task Parse_honors_configured_boundary_length_limit()
+    {
+        var body = "--boundary\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--boundary--\r\n";
+        var request = CreateMultipartRequest("boundary", body);
+
+        var result = MultipartFormDataParser.Parse(
+            request,
+            new MultipartFormDataParserOptions { MaxBoundaryLength = 5 }
+        );
+
+        await Assert.That(result).IsNull();
+    }
+
+    [Test]
     public async Task Skips_text_field_with_invalid_utf8_bytes()
     {
         var boundary = "boundary"u8.ToArray();

@@ -11,6 +11,18 @@ public static class MultipartFormDataParser
 
     public static MultipartFormData? Parse(HttpRequest request)
     {
+        return Parse(request, new MultipartFormDataParserOptions());
+    }
+
+    public static MultipartFormData? Parse(HttpRequest request, MultipartFormDataParserOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxBoundaryLength, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(
+            options.MaxBoundaryLength,
+            MultipartFormDataParserOptions.DefaultMaxBoundaryLength
+        );
+
         var contentType = GetHeaderValue(request.HeaderFields, "Content-Type");
         if (contentType is null)
             return null;
@@ -18,13 +30,16 @@ public static class MultipartFormDataParser
         if (!contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var boundary = ExtractBoundary(contentType);
+        var boundary = ExtractBoundary(contentType, options.MaxBoundaryLength);
         return boundary is null
             ? null
             : ParseBody(request.Body, Encoding.UTF8.GetBytes(boundary));
     }
 
-    internal static string? ExtractBoundary(string contentType)
+    internal static string? ExtractBoundary(
+        string contentType,
+        int maxBoundaryLength = MultipartFormDataParserOptions.DefaultMaxBoundaryLength
+    )
     {
         var span = contentType.AsSpan();
         var idx = span.IndexOf("boundary=", StringComparison.OrdinalIgnoreCase);
@@ -32,7 +47,7 @@ public static class MultipartFormDataParser
             return null;
 
         var boundary = ExtractValue(span[(idx + 9)..], [';', ' ']);
-        return IsValidBoundary(boundary) ? boundary : null;
+        return IsValidBoundary(boundary, maxBoundaryLength) ? boundary : null;
     }
 
     private static MultipartFormData ParseBody(ReadOnlyMemory<byte> body, byte[] boundary)
@@ -238,9 +253,9 @@ public static class MultipartFormDataParser
         }
     }
 
-    private static bool IsValidBoundary(string? boundary)
+    private static bool IsValidBoundary(string? boundary, int maxBoundaryLength)
     {
-        if (string.IsNullOrEmpty(boundary) || boundary.Length > 70)
+        if (string.IsNullOrEmpty(boundary) || boundary.Length > maxBoundaryLength)
         {
             return false;
         }
