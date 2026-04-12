@@ -26,6 +26,15 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
             );
         }
 
+        if (options.StreamingResponseBufferSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                options.StreamingResponseBufferSize,
+                "StreamingResponseBufferSize must be greater than zero."
+            );
+        }
+
         _options = options;
         _requestHandler =
             options.RequestHandler
@@ -274,12 +283,15 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
             var stream = response.BodyStream!;
             await using (stream.ConfigureAwait(false))
             {
-                var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
+                var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(_options.StreamingResponseBufferSize);
                 try
                 {
                     while (true)
                     {
-                        var read = await stream.ReadAsync(buffer.AsMemory(), cancellationToken);
+                        var read = await stream.ReadAsync(
+                            buffer.AsMemory(0, _options.StreamingResponseBufferSize),
+                            cancellationToken
+                        );
                         if (read == 0)
                         {
                             break;

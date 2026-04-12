@@ -510,6 +510,54 @@ public sealed class HttpConnectionHandlerTests
     }
 
     [Test]
+    public async Task Constructor_rejects_non_positive_streaming_response_buffer_size()
+    {
+        await Assert
+            .That(
+                () =>
+                    new HttpConnectionHandler(
+                        new HttpConnectionHandlerOptions
+                        {
+                            RequestHandler = static (_, _) =>
+                                ValueTask.FromResult(new HttpResponse { StatusCode = 204, ReasonPhrase = "No Content" }),
+                            StreamingResponseBufferSize = 0,
+                        }
+                    )
+            )
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task OnReceivedAsync_streaming_response_uses_configured_buffer_size()
+    {
+        var stream = new ChunkRecordingStream(Encoding.ASCII.GetBytes("abcdef"));
+        var buffer = new ReadOnlySequence<byte>(
+            Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+        );
+        var context = new RecordingConnectionContext();
+        var handler = new HttpConnectionHandler(
+            new HttpConnectionHandlerOptions
+            {
+                RequestHandler = (_, _) =>
+                    ValueTask.FromResult(
+                        new HttpResponse
+                        {
+                            StatusCode = 200,
+                            ReasonPhrase = "OK",
+                            BodyStream = stream,
+                        }
+                    ),
+                StreamingResponseBufferSize = 3,
+            }
+        );
+
+        await handler.OnReceivedAsync(context, buffer, CancellationToken.None);
+
+        await Assert.That(stream.ReadBufferSizes.Count).IsGreaterThanOrEqualTo(2);
+        await Assert.That(stream.ReadBufferSizes.All(static size => size == 3)).IsTrue();
+    }
+
+    [Test]
     public async Task OnReceivedAsync_streaming_response_closes_connection_when_requested()
     {
         var buffer = new ReadOnlySequence<byte>(
@@ -913,6 +961,7 @@ public sealed class HttpConnectionHandlerTests
         await Assert.That(goAway!.Type).IsEqualTo(Http2FrameType.GoAway);
     }
 
+
     private static HttpConnectionHandler CreateHandler(HttpRequestHandler requestHandler) =>
         new(new HttpConnectionHandlerOptions { RequestHandler = requestHandler });
 
@@ -928,6 +977,57 @@ public sealed class HttpConnectionHandlerTests
             IsDisposed = true;
             base.Dispose(disposing);
         }
+    }
+
+    private sealed class ChunkRecordingStream(byte[] buffer) : Stream
+    {
+        private readonly byte[] _buffer = buffer;
+        private int _position;
+
+        public List<int> ReadBufferSizes { get; } = [];
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => _buffer.Length;
+
+        public override long Position
+        {
+            get => _position;
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() { }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            ReadAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> destination,
+            CancellationToken cancellationToken = default
+        )
+        {
+            ReadBufferSizes.Add(destination.Length);
+
+            if (_position >= _buffer.Length)
+            {
+                return ValueTask.FromResult(0);
+            }
+
+            var bytesToRead = Math.Min(2, _buffer.Length - _position);
+            _buffer.AsMemory(_position, bytesToRead).CopyTo(destination);
+            _position += bytesToRead;
+            return ValueTask.FromResult(bytesToRead);
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class RecordingConnectionContext : ITcpConnectionContext
