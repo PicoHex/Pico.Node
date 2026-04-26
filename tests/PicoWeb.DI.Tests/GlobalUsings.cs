@@ -1,0 +1,8 @@
+global using System.Net;
+global using System.Threading;
+global using System.Threading.Tasks;
+global using PicoDI;
+global using PicoNode;
+global using PicoNode.Abs;
+global using PicoNode.Web;
+global using PicoWeb;

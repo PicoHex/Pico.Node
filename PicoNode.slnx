@@ -20,6 +20,7 @@
     <Project Path="tests/PicoNode.Smoke/PicoNode.Smoke.csproj" />
     <Project Path="tests/PicoNode.Tests/PicoNode.Tests.csproj" />
     <Project Path="tests/PicoNode.Web.Tests/PicoNode.Web.Tests.csproj" />
+    <Project Path="tests/PicoWeb.DI.Tests/PicoWeb.DI.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <File Path="benchmarks\README.md" />
