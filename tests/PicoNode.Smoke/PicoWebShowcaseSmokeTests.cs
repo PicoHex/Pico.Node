@@ -94,9 +94,12 @@ public sealed class PicoWebShowcaseSmokeTests
     {
         var port = GetAvailablePort();
         var sampleRoot = Path.Combine(GetRepositoryRoot(), "samples", "PicoWeb.Samples");
+        var container = new SvcContainer();
+        container.Build();
         var server = new WebServer(
             ShowcaseApp.Create(sampleRoot),
-            new WebServerOptions { Endpoint = new IPEndPoint(IPAddress.Loopback, port) }
+            new WebServerOptions { Endpoint = new IPEndPoint(IPAddress.Loopback, port) },
+            container
         );
 
         await server.StartAsync();

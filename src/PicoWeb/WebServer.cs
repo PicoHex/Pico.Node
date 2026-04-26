@@ -4,15 +4,18 @@ public sealed class WebServer : IAsyncDisposable
 {
     private readonly WebApp _app;
     private readonly WebServerOptions _options;
+    private readonly ISvcContainer _container;
     private TcpNode? _node;
     private bool _disposed;
 
-    public WebServer(WebApp app, WebServerOptions options)
+    public WebServer(WebApp app, WebServerOptions options, ISvcContainer container)
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(container);
         _app = app;
         _options = options;
+        _container = container;
     }
 
     public EndPoint? LocalEndPoint => _node?.LocalEndPoint;
@@ -26,7 +29,7 @@ public sealed class WebServer : IAsyncDisposable
             throw new InvalidOperationException("Server has already been started.");
         }
 
-        var handler = _app.Build();
+        var handler = _app.Build(_container);
 
         var node = new TcpNode(
             new TcpNodeOptions

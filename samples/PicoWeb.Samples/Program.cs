@@ -1,10 +1,15 @@
 using System.Net;
+using PicoDI;
 using PicoWeb;
 using PicoWeb.Samples;
 
+var container = new SvcContainer();
+container.Build();
+
 await using var server = new WebServer(
     ShowcaseApp.Create(),
-    new WebServerOptions { Endpoint = new IPEndPoint(IPAddress.Loopback, 7004) }
+    new WebServerOptions { Endpoint = new IPEndPoint(IPAddress.Loopback, 7004) },
+    container
 );
 
 await server.StartAsync();
