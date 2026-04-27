@@ -301,7 +301,8 @@ internal sealed class TcpConnection : IAsyncDisposable
 
     private static PipeOptions CreatePipeOptions(TcpNodeOptions options, int receiveBufferSize)
     {
-        var pauseThreshold = options.ReceivePipePauseThresholdBytes
+        var pauseThreshold =
+            options.ReceivePipePauseThresholdBytes
             ?? checked(receiveBufferSize * DefaultReceivePipePauseThresholdMultiplier);
         return new PipeOptions(
             pauseWriterThreshold: pauseThreshold,
@@ -311,7 +312,7 @@ internal sealed class TcpConnection : IAsyncDisposable
         );
     }
 
-    private async Task InvokeConnectedAsync(
+    private static async Task InvokeConnectedAsync(
         ITcpConnectionHandler handler,
         ITcpConnectionContext context,
         CancellationToken cancellationToken
@@ -353,7 +354,7 @@ internal sealed class TcpConnection : IAsyncDisposable
         await processingTask;
     }
 
-    private async ValueTask<SequencePosition> InvokeOnReceivedAsync(
+    private static async ValueTask<SequencePosition> InvokeOnReceivedAsync(
         ITcpConnectionHandler handler,
         ITcpConnectionContext context,
         ReadOnlySequence<byte> buffer,
@@ -567,10 +568,7 @@ internal sealed class TcpConnection : IAsyncDisposable
                 while (remainingOffset < segments.Length)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var sendOperation = socket.SendAsync(
-                        (IList<ArraySegment<byte>>)segments,
-                        SocketFlags.None
-                    );
+                    var sendOperation = socket.SendAsync(segments, SocketFlags.None);
                     var bytesSent = sendOperation.IsCompletedSuccessfully
                         ? sendOperation.Result
                         : await sendOperation.WaitAsync(cancellationToken);

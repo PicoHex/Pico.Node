@@ -31,7 +31,7 @@ public sealed class HttpRouter
                 throw new ArgumentException("Route paths must not be blank.", nameof(options));
             }
 
-            if (!route.Path.StartsWith("/", StringComparison.Ordinal))
+            if (!route.Path.StartsWith('/'))
             {
                 throw new ArgumentException("Route paths must start with '/'.", nameof(options));
             }

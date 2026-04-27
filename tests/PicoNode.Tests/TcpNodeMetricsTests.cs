@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace PicoNode.Tests;
 
 public sealed class TcpNodeMetricsTests
