@@ -4,7 +4,6 @@ public static class Http2FrameCodec
 {
     public const int FrameHeaderSize = 9;
     public const int DefaultMaxFrameSize = 16384;
-    public const int MaximumAllowedFrameSize = 16777215;
 
     private static readonly byte[] ConnectionPreface =
         "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"u8.ToArray();

@@ -19,48 +19,13 @@ internal static class HttpResponseSerializer
     )
     {
         ArgumentNullException.ThrowIfNull(response);
-
-        ValidateStatusLinePart(response.Version, nameof(response.Version));
-        ValidateStatusLinePart(response.ReasonPhrase, nameof(response.ReasonPhrase));
-        ValidateOptionalHeaderValue(serverHeader, nameof(serverHeader));
-
-        foreach (var header in response.Headers)
-        {
-            ValidateHeaderName(header.Key);
-            ValidateHeaderValue(header.Value, header.Key);
-        }
+        ValidateResponse(response, serverHeader);
 
         var headerBuffer = new ArrayBufferWriter<byte>(
             EstimateHeaderLength(response, closeConnection, serverHeader)
         );
 
-        WriteAscii(headerBuffer, response.Version);
-        WriteAscii(headerBuffer, " ");
-        WriteInt(headerBuffer, response.StatusCode);
-        WriteAscii(headerBuffer, " ");
-        WriteAscii(headerBuffer, response.ReasonPhrase);
-        WriteCrlf(headerBuffer);
-
-        foreach (var header in response.Headers)
-        {
-            if (ShouldSkipApplicationHeader(header.Key, serverHeader))
-            {
-                continue;
-            }
-
-            WriteHeader(headerBuffer, header.Key, header.Value);
-        }
-
-        if (!string.IsNullOrEmpty(serverHeader))
-        {
-            WriteHeader(headerBuffer, ServerHeaderName, serverHeader);
-        }
-
-        if (closeConnection)
-        {
-            WriteHeader(headerBuffer, ConnectionHeaderName, CloseConnectionHeaderValue);
-        }
-
+        WriteStatusAndHeaders(headerBuffer, response, closeConnection, serverHeader, isChunked: false);
         WriteHeader(headerBuffer, ContentLengthHeaderName, response.Body.Length);
         WriteCrlf(headerBuffer);
 
@@ -81,48 +46,11 @@ internal static class HttpResponseSerializer
     )
     {
         ArgumentNullException.ThrowIfNull(response);
-
-        ValidateStatusLinePart(response.Version, nameof(response.Version));
-        ValidateStatusLinePart(response.ReasonPhrase, nameof(response.ReasonPhrase));
-        ValidateOptionalHeaderValue(serverHeader, nameof(serverHeader));
-
-        foreach (var header in response.Headers)
-        {
-            ValidateHeaderName(header.Key);
-            ValidateHeaderValue(header.Value, header.Key);
-        }
+        ValidateResponse(response, serverHeader);
 
         var headerBuffer = new ArrayBufferWriter<byte>(256);
-
-        WriteAscii(headerBuffer, response.Version);
-        WriteAscii(headerBuffer, " ");
-        WriteInt(headerBuffer, response.StatusCode);
-        WriteAscii(headerBuffer, " ");
-        WriteAscii(headerBuffer, response.ReasonPhrase);
-        WriteCrlf(headerBuffer);
-
-        foreach (var header in response.Headers)
-        {
-            if (ShouldSkipChunkedHeader(header.Key, serverHeader))
-            {
-                continue;
-            }
-
-            WriteHeader(headerBuffer, header.Key, header.Value);
-        }
-
-        if (!string.IsNullOrEmpty(serverHeader))
-        {
-            WriteHeader(headerBuffer, ServerHeaderName, serverHeader);
-        }
-
+        WriteStatusAndHeaders(headerBuffer, response, closeConnection, serverHeader, isChunked: true);
         WriteHeader(headerBuffer, TransferEncodingHeaderName, ChunkedHeaderValue);
-
-        if (closeConnection)
-        {
-            WriteHeader(headerBuffer, ConnectionHeaderName, CloseConnectionHeaderValue);
-        }
-
         WriteCrlf(headerBuffer);
 
         return new ReadOnlySequence<byte>(headerBuffer.WrittenMemory);
@@ -157,14 +85,52 @@ internal static class HttpResponseSerializer
 
     public static ReadOnlySequence<byte> ChunkTerminator => new(ChunkTerminatorBytes);
 
-    private static bool ShouldSkipChunkedHeader(string name, string? serverHeader) =>
-        name.Equals(ContentLengthHeaderName, StringComparison.OrdinalIgnoreCase)
-        || name.Equals(TransferEncodingHeaderName, StringComparison.OrdinalIgnoreCase)
-        || name.Equals(ConnectionHeaderName, StringComparison.OrdinalIgnoreCase)
-        || (
-            !string.IsNullOrEmpty(serverHeader)
-            && name.Equals(ServerHeaderName, StringComparison.OrdinalIgnoreCase)
-        );
+    private static void ValidateResponse(HttpResponse response, string? serverHeader)
+    {
+        ValidateStatusLinePart(response.Version, nameof(response.Version));
+        ValidateStatusLinePart(response.ReasonPhrase, nameof(response.ReasonPhrase));
+        ValidateOptionalHeaderValue(serverHeader, nameof(serverHeader));
+
+        foreach (var header in response.Headers)
+        {
+            ValidateHeaderName(header.Key);
+            ValidateHeaderValue(header.Value, header.Key);
+        }
+    }
+
+    private static void WriteStatusAndHeaders(
+        ArrayBufferWriter<byte> buffer,
+        HttpResponse response,
+        bool closeConnection,
+        string? serverHeader,
+        bool isChunked)
+    {
+        WriteAscii(buffer, response.Version);
+        WriteAscii(buffer, " ");
+        WriteInt(buffer, response.StatusCode);
+        WriteAscii(buffer, " ");
+        WriteAscii(buffer, response.ReasonPhrase);
+        WriteCrlf(buffer);
+
+        foreach (var header in response.Headers)
+        {
+            if (header.Key.Equals(ContentLengthHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
+            if (header.Key.Equals(ConnectionHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
+            if (isChunked && header.Key.Equals(TransferEncodingHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.IsNullOrEmpty(serverHeader) && header.Key.Equals(ServerHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
+            WriteHeader(buffer, header.Key, header.Value);
+        }
+
+        if (!string.IsNullOrEmpty(serverHeader))
+        {
+            WriteHeader(buffer, ServerHeaderName, serverHeader);
+        }
+
+        if (closeConnection)
+        {
+            WriteHeader(buffer, ConnectionHeaderName, CloseConnectionHeaderValue);
+        }
+    }
 
     private static int EstimateHeaderLength(
         HttpResponse response,

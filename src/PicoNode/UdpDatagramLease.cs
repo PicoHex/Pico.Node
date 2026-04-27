@@ -11,7 +11,7 @@ internal sealed class UdpDatagramLease(byte[] buffer, int count, IPEndPoint remo
 
     public IPEndPoint RemoteEndPoint { get; } = remoteEndPoint;
 
-    public ArraySegment<byte> Datagram => new(Buffer, 0, Count);
+    public ArraySegment<byte> Datagram { get; } = new(buffer, 0, count);
 
     public void Dispose()
     {

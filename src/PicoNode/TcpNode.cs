@@ -28,7 +28,8 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
     public TcpNode(TcpNodeOptions options)
     {
-        Options = options ?? throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(options);
+        Options = options;
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.MaxConnections, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.ReceiveSocketBufferSize, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.SendSocketBufferSize, 0);
@@ -352,7 +353,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
             {
                 socket.Shutdown(SocketShutdown.Both);
             }
-            catch { }
+            catch { /* socket may already be disconnected — safe to ignore */ }
             socket.Dispose();
             return null;
         }
@@ -365,7 +366,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
         {
             socket.Shutdown(SocketShutdown.Both);
         }
-        catch { }
+        catch { /* socket may already be disconnected — safe to ignore */ }
 
         socket.Dispose();
     }
@@ -451,7 +452,6 @@ public sealed class TcpNode : INode, IAsyncDisposable
             _listener.Dispose();
             _eventArgsPool.Dispose();
             _state = NodeState.Disposed;
-            GC.SuppressFinalize(this);
         }
 
         if (stopException is not null)

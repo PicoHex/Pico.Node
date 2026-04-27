@@ -28,7 +28,8 @@ public sealed class UdpNode : INode, IAsyncDisposable
 
     public UdpNode(UdpNodeOptions options)
     {
-        Options = options ?? throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(options);
+        Options = options;
         if (options.DispatchWorkerCount <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options.DispatchWorkerCount));
@@ -407,7 +408,6 @@ public sealed class UdpNode : INode, IAsyncDisposable
             _cts.Dispose();
             _socket.Dispose();
             _state = NodeState.Disposed;
-            GC.SuppressFinalize(this);
         }
 
         if (stopException is not null)

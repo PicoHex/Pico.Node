@@ -320,7 +320,7 @@ public sealed class CompressionMiddleware
         CompressionLevel level
     )
     {
-        using var output = new MemoryStream();
+        using var output = new MemoryStream(body.Length);
 
         using (var compressor = CreateCompressor(output, encoding, level))
         {
@@ -355,7 +355,8 @@ public sealed class CompressionMiddleware
 
         public CompressedReadStream(Stream source, string encoding, CompressionLevel level)
         {
-            _source = source ?? throw new ArgumentNullException(nameof(source));
+            ArgumentNullException.ThrowIfNull(source);
+            _source = source;
             _encoding = encoding;
             _level = level;
         }

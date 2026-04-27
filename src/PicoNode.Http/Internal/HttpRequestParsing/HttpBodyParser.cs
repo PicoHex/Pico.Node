@@ -77,7 +77,7 @@ internal static class HttpBodyParser
         bool expectsContinue
     )
     {
-        var bodyParts = new List<byte[]>();
+        var bodyWriter = new ArrayBufferWriter<byte>();
         var totalBodyLength = 0L;
 
         while (true)
@@ -165,21 +165,15 @@ internal static class HttpBodyParser
                 );
             }
 
-            var chunkData = new byte[chunkSize];
-            remaining.Slice(0, chunkSize).CopyTo(chunkData);
-            bodyParts.Add(chunkData);
+            var span = bodyWriter.GetSpan(chunkSize);
+            remaining.Slice(0, chunkSize).CopyTo(span);
+            bodyWriter.Advance(chunkSize);
 
             reader.Advance(chunkSize + 2);
             reader.ConsumedBytes += chunkSize + 2;
         }
 
-        var body = new byte[totalBodyLength];
-        var offset = 0;
-        foreach (var part in bodyParts)
-        {
-            part.CopyTo(body, offset);
-            offset += part.Length;
-        }
+        var body = bodyWriter.WrittenSpan.ToArray();
 
         return HttpRequestParseResult.Success(
             new HttpRequest
