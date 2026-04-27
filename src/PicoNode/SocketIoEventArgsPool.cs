@@ -3,7 +3,7 @@ namespace PicoNode;
 internal sealed class SocketIoEventArgsPool : IDisposable
 {
     private readonly ConcurrentBag<SocketIoEventArgs> _pool = new();
-    private bool _disposed;
+    private int _disposed;
 
     public SocketIoEventArgsPool() { }
 
@@ -14,7 +14,7 @@ internal sealed class SocketIoEventArgsPool : IDisposable
 
     public void Return(SocketIoEventArgs eventArgs)
     {
-        if (_disposed)
+        if (Volatile.Read(ref _disposed) != 0)
         {
             DisposeEventArgs(eventArgs);
             return;
@@ -31,12 +31,11 @@ internal sealed class SocketIoEventArgsPool : IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
 
-        _disposed = true;
         while (_pool.TryTake(out var eventArgs))
         {
             DisposeEventArgs(eventArgs);
@@ -45,7 +44,7 @@ internal sealed class SocketIoEventArgsPool : IDisposable
 
     private SocketIoEventArgs RentCore()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         if (_pool.TryTake(out var eventArgs))
         {
             return eventArgs;

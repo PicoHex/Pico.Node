@@ -97,6 +97,7 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
         CancellationToken cancellationToken
     )
     {
+        var state = GetOrCreateConnectionState(connection.ConnectionId, ConnectionProtocol.Http1);
         var parseResult = HttpRequestParser.Parse(buffer, _options);
 
         return parseResult switch
@@ -104,7 +105,7 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
             { Status: HttpRequestParseStatus.Incomplete, ExpectsContinue: true }
                 => SendContinueIfNeededAsync(connection, parseResult.Consumed, cancellationToken),
             { Status: HttpRequestParseStatus.Incomplete }
-                => ValueTask.FromResult(parseResult.Consumed),
+                => CheckRequestTimeoutAsync(connection, state, parseResult.Consumed, cancellationToken),
             { Status: HttpRequestParseStatus.Success, Request: { } request }
                 => HandleRequestAsync(connection, request, parseResult.Consumed, cancellationToken),
             { Status: HttpRequestParseStatus.Rejected, Error: { } error }
@@ -116,6 +117,29 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
                 ),
             _ => throw new InvalidOperationException("Unexpected HTTP parse status."),
         };
+    }
+
+    private ValueTask<SequencePosition> CheckRequestTimeoutAsync(
+        ITcpConnectionContext connection,
+        ConnectionRuntimeState state,
+        SequencePosition consumed,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        if (state.RequestParsingStartedAtUtc == default)
+        {
+            state.RequestParsingStartedAtUtc = now;
+            return ValueTask.FromResult(consumed);
+        }
+
+        if (_options.RequestTimeout <= TimeSpan.Zero
+            || now - state.RequestParsingStartedAtUtc < _options.RequestTimeout)
+        {
+            return ValueTask.FromResult(consumed);
+        }
+
+        connection.Close();
+        return ValueTask.FromResult(consumed);
     }
 
     public Task OnClosedAsync(
@@ -157,6 +181,7 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
     {
         var state = GetOrCreateConnectionState(connection.ConnectionId, ConnectionProtocol.Http1);
         state.ContinueSent = false;
+        state.RequestParsingStartedAtUtc = default;
 
         try
         {

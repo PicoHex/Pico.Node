@@ -3,7 +3,7 @@ namespace PicoNode;
 internal sealed class UdpDatagramLease(byte[] buffer, int count, IPEndPoint remoteEndPoint)
     : IDisposable
 {
-    private bool _disposed;
+    private int _disposed;
 
     public byte[] Buffer { get; } = buffer;
 
@@ -15,12 +15,10 @@ internal sealed class UdpDatagramLease(byte[] buffer, int count, IPEndPoint remo
 
     public void Dispose()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
-
-        _disposed = true;
         ArrayPool<byte>.Shared.Return(Buffer, clearArray: false);
     }
 }

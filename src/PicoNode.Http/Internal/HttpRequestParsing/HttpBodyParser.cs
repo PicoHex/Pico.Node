@@ -148,7 +148,7 @@ internal static class HttpBodyParser
             }
 
             var remaining = reader.SliceFromPosition();
-            if (remaining.Length < chunkSize + 2)
+            if (remaining.Length < (long)chunkSize + 2)
             {
                 return HttpRequestParseResult.Incomplete(reader.BufferStart, expectsContinue);
             }

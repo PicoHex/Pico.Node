@@ -8,8 +8,8 @@ internal static class HttpHeaderParser
         string version
     )
     {
-        var headerFields = new List<KeyValuePair<string, string>>();
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var headerFields = new List<KeyValuePair<string, string>>(capacity: 16);
+        var headers = new Dictionary<string, string>(capacity: 16, StringComparer.OrdinalIgnoreCase);
         var contentLength = 0L;
         var hasContentLength = false;
         var hasHost = false;

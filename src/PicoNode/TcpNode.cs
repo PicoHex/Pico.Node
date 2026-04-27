@@ -19,7 +19,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
     private Task? _idleMonitorTask;
     private TaskCompletionSource<bool>? _drained;
     private volatile NodeState _state;
-    private bool _disposed;
+    private int _disposed;
     private long _totalAccepted;
     private long _totalRejected;
     private long _totalClosed;
@@ -109,7 +109,7 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         lock (_stateLock)
         {
@@ -433,12 +433,10 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
-
-        _disposed = true;
         Exception? stopException = null;
 
         try

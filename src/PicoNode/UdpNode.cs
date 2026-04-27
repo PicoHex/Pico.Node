@@ -18,7 +18,7 @@ public sealed class UdpNode : INode, IAsyncDisposable
     private readonly Lock _stateLock = new();
     private Task? _receiveTask;
     private volatile NodeState _state;
-    private bool _disposed;
+    private int _disposed;
     private long _totalDatagramsReceived;
     private long _totalDatagramsSent;
     private long _totalBytesReceived;
@@ -124,7 +124,7 @@ public sealed class UdpNode : INode, IAsyncDisposable
 
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         lock (_stateLock)
         {
@@ -376,12 +376,10 @@ public sealed class UdpNode : INode, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
-
-        _disposed = true;
         Exception? stopException = null;
 
         try
