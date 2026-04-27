@@ -25,7 +25,13 @@ internal static class HttpResponseSerializer
             EstimateHeaderLength(response, closeConnection, serverHeader)
         );
 
-        WriteStatusAndHeaders(headerBuffer, response, closeConnection, serverHeader, isChunked: false);
+        WriteStatusAndHeaders(
+            headerBuffer,
+            response,
+            closeConnection,
+            serverHeader,
+            isChunked: false
+        );
         WriteHeader(headerBuffer, ContentLengthHeaderName, response.Body.Length);
         WriteCrlf(headerBuffer);
 
@@ -49,7 +55,13 @@ internal static class HttpResponseSerializer
         ValidateResponse(response, serverHeader);
 
         var headerBuffer = new ArrayBufferWriter<byte>(256);
-        WriteStatusAndHeaders(headerBuffer, response, closeConnection, serverHeader, isChunked: true);
+        WriteStatusAndHeaders(
+            headerBuffer,
+            response,
+            closeConnection,
+            serverHeader,
+            isChunked: true
+        );
         WriteHeader(headerBuffer, TransferEncodingHeaderName, ChunkedHeaderValue);
         WriteCrlf(headerBuffer);
 
@@ -103,7 +115,8 @@ internal static class HttpResponseSerializer
         HttpResponse response,
         bool closeConnection,
         string? serverHeader,
-        bool isChunked)
+        bool isChunked
+    )
     {
         WriteAscii(buffer, response.Version);
         WriteAscii(buffer, " ");
@@ -114,10 +127,20 @@ internal static class HttpResponseSerializer
 
         foreach (var header in response.Headers)
         {
-            if (header.Key.Equals(ContentLengthHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
-            if (header.Key.Equals(ConnectionHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
-            if (isChunked && header.Key.Equals(TransferEncodingHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
-            if (!string.IsNullOrEmpty(serverHeader) && header.Key.Equals(ServerHeaderName, StringComparison.OrdinalIgnoreCase)) continue;
+            if (header.Key.Equals(ContentLengthHeaderName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (header.Key.Equals(ConnectionHeaderName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (
+                isChunked
+                && header.Key.Equals(TransferEncodingHeaderName, StringComparison.OrdinalIgnoreCase)
+            )
+                continue;
+            if (
+                !string.IsNullOrEmpty(serverHeader)
+                && header.Key.Equals(ServerHeaderName, StringComparison.OrdinalIgnoreCase)
+            )
+                continue;
             WriteHeader(buffer, header.Key, header.Value);
         }
 
