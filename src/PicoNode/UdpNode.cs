@@ -12,7 +12,6 @@ public sealed class UdpNode : INode, IAsyncDisposable
     private const int MaxUdpDatagramSize = 65527;
 
     private readonly Socket _socket;
-    private readonly CancellationTokenSource _cts = new();
     private readonly CancellationTokenSource _receiveCts = new();
     private readonly Channel<UdpDatagramLease>[] _queues;
     private readonly Task[] _workers;
@@ -78,15 +77,6 @@ public sealed class UdpNode : INode, IAsyncDisposable
     public EndPoint LocalEndPoint => _socket.LocalEndPoint ?? Options.Endpoint;
 
     public NodeState State => _state;
-
-    public UdpNodeMetrics GetMetrics() =>
-        new(
-            Interlocked.Read(ref _totalDatagramsReceived),
-            Interlocked.Read(ref _totalDatagramsSent),
-            Interlocked.Read(ref _totalBytesReceived),
-            Interlocked.Read(ref _totalBytesSent),
-            Interlocked.Read(ref _totalDropped)
-        );
 
     public void JoinMulticastGroup(IPAddress groupAddress)
     {
@@ -159,7 +149,7 @@ public sealed class UdpNode : INode, IAsyncDisposable
             {
                 var queue = _queues[i];
                 _workers[i] = Task.Run(
-                    () => ProcessQueueAsync(queue, _cts.Token),
+                    () => ProcessQueueAsync(queue, CancellationToken.None),
                     CancellationToken.None
                 );
             }
@@ -198,7 +188,7 @@ public sealed class UdpNode : INode, IAsyncDisposable
             _state = NodeState.Stopping;
         }
 
-        _receiveCts.Cancel();
+        await _receiveCts.CancelAsync();
 
         try
         {
@@ -405,7 +395,6 @@ public sealed class UdpNode : INode, IAsyncDisposable
         finally
         {
             _receiveCts.Dispose();
-            _cts.Dispose();
             _socket.Dispose();
             _state = NodeState.Disposed;
         }

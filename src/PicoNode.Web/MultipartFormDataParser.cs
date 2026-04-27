@@ -4,17 +4,21 @@ using System.Text;
 
 public static class MultipartFormDataParser
 {
-    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-    private static readonly byte[] CrLf = "\r\n"u8.ToArray();
-    private static readonly byte[] DoubleCrLf = "\r\n\r\n"u8.ToArray();
-    private static readonly byte[] DashDash = "--"u8.ToArray();
+    private static readonly UTF8Encoding StrictUtf8 =
+        new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private static ReadOnlySpan<byte> CrLf => "\r\n"u8;
+    private static ReadOnlySpan<byte> DoubleCrLf => "\r\n\r\n"u8;
+    private static ReadOnlySpan<byte> DashDash => "--"u8;
 
     public static MultipartFormData? Parse(HttpRequest request)
     {
         return Parse(request, new MultipartFormDataParserOptions());
     }
 
-    public static MultipartFormData? Parse(HttpRequest request, MultipartFormDataParserOptions options)
+    public static MultipartFormData? Parse(
+        HttpRequest request,
+        MultipartFormDataParserOptions options
+    )
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxBoundaryLength, 1);
@@ -31,9 +35,7 @@ public static class MultipartFormDataParser
             return null;
 
         var boundary = ExtractBoundary(contentType, options.MaxBoundaryLength);
-        return boundary is null
-            ? null
-            : ParseBody(request.Body, Encoding.UTF8.GetBytes(boundary));
+        return boundary is null ? null : ParseBody(request.Body, Encoding.UTF8.GetBytes(boundary));
     }
 
     internal static string? ExtractBoundary(
@@ -262,7 +264,26 @@ public static class MultipartFormDataParser
 
         foreach (var ch in boundary)
         {
-            if (ch <= 0x20 || ch >= 0x7F || ch is '"' or '(' or ')' or ',' or '/' or ':' or ';' or '<' or '=' or '>' or '?' or '@' or '[' or '\\' or ']')
+            if (
+                ch <= 0x20
+                || ch >= 0x7F
+                || ch
+                    is '"'
+                        or '('
+                        or ')'
+                        or ','
+                        or '/'
+                        or ':'
+                        or ';'
+                        or '<'
+                        or '='
+                        or '>'
+                        or '?'
+                        or '@'
+                        or '['
+                        or '\\'
+                        or ']'
+            )
             {
                 return false;
             }

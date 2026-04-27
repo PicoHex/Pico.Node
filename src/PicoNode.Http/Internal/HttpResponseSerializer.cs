@@ -306,6 +306,8 @@ internal static class HttpResponseSerializer
 
     private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
     {
+        private static readonly ConcurrentBag<BufferSegment> Pool = new();
+
         public BufferSegment(ReadOnlyMemory<byte> memory)
         {
             Memory = memory;
@@ -313,8 +315,12 @@ internal static class HttpResponseSerializer
 
         public BufferSegment Append(ReadOnlyMemory<byte> memory)
         {
-            var next = new BufferSegment(memory) { RunningIndex = RunningIndex + Memory.Length, };
+            if (!Pool.TryTake(out var next))
+                next = new BufferSegment(memory);
+            else
+                next.Memory = memory;
 
+            next.RunningIndex = RunningIndex + Memory.Length;
             Next = next;
             return next;
         }

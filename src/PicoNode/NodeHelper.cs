@@ -9,15 +9,6 @@ internal static class NodeHelper
         Exception? exception = null
     )
     {
-        if (faultHandler is null)
-        {
-            return;
-        }
-
-        try
-        {
-            faultHandler(new NodeFault(code, operation, exception));
-        }
-        catch { }
+        faultHandler?.Invoke(new NodeFault(code, operation, exception));
     }
 }

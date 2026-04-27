@@ -173,30 +173,6 @@ public sealed class TcpNodeMetricsTests
             );
     }
 
-    [Test]
-    public async Task UdpNodeMetrics_exposes_expected_properties()
-    {
-        var type = typeof(UdpNodeMetrics);
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Select(x => x.Name)
-            .OrderBy(x => x)
-            .ToArray();
-
-        await Assert.That(type.IsSealed).IsTrue();
-        await Assert
-            .That(properties)
-            .IsEquivalentTo(
-
-                [
-                    nameof(UdpNodeMetrics.TotalBytesReceived),
-                    nameof(UdpNodeMetrics.TotalBytesSent),
-                    nameof(UdpNodeMetrics.TotalDatagramsReceived),
-                    nameof(UdpNodeMetrics.TotalDatagramsSent),
-                    nameof(UdpNodeMetrics.TotalDropped),
-                ]
-            );
-    }
-
     private static TcpNode CreateNode(ITcpConnectionHandler handler, int maxConnections = 100) =>
         new(
             new TcpNodeOptions
