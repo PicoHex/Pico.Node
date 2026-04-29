@@ -21,8 +21,8 @@ public static class CorsHandler
 
             [
                 new("Access-Control-Allow-Origin", origin),
-                new("Access-Control-Allow-Methods", string.Join(", ", options.AllowedMethods)),
-                new("Access-Control-Allow-Headers", string.Join(", ", options.AllowedHeaders)),
+                new("Access-Control-Allow-Methods", options.AllowedMethodsHeader),
+                new("Access-Control-Allow-Headers", options.AllowedHeadersHeader),
             ]
         );
 
@@ -67,7 +67,7 @@ public static class CorsHandler
             headers.Add(
                 new KeyValuePair<string, string>(
                     "Access-Control-Expose-Headers",
-                    string.Join(", ", options.ExposedHeaders)
+                    options.ExposedHeadersHeader
                 )
             );
 

@@ -10,6 +10,7 @@ internal sealed class WebRouter
     private readonly Dictionary<string, Dictionary<string, WebRequestHandler>> _exactRoutes;
     private readonly RadixTree<CompiledRoute> _paramTree;
     private readonly WebRequestHandler? _fallbackHandler;
+    private readonly Dictionary<string, string> _exactAllowHeaderCache = new(StringComparer.Ordinal);
 
     internal WebRouter(IReadOnlyList<WebRoute> routes, WebRequestHandler? fallbackHandler = null)
     {
@@ -86,6 +87,15 @@ internal sealed class WebRouter
                 }
             }
         }
+
+        // Precompute Allow header per exact pattern to avoid per-request sort+join on the 405 path.
+        foreach (var entry in _exactRoutes)
+        {
+            var methods = new string[entry.Value.Count];
+            entry.Value.Keys.CopyTo(methods, 0);
+            Array.Sort(methods, StringComparer.Ordinal);
+            _exactAllowHeaderCache.Add(entry.Key, string.Join(", ", methods));
+        }
     }
 
     internal ValueTask<HttpResponse> HandleAsync(
@@ -118,6 +128,26 @@ internal sealed class WebRouter
         }
 
         var paramMethods = _paramTree.TryGetMethodsForPath(path);
+        if (paramMethods is null && allowedMethods is { Count: > 0 } && exactMethods is not null)
+        {
+            // Fast path: the only matching methods come from a single exact pattern,
+            // so we can use the precomputed Allow header instead of sort+join.
+            return ValueTask.FromResult(
+                new HttpResponse
+                {
+                    StatusCode = 405,
+                    ReasonPhrase = "Method Not Allowed",
+                    Headers =
+                    [
+                        new KeyValuePair<string, string>(
+                            "Allow",
+                            _exactAllowHeaderCache[path]
+                        ),
+                    ],
+                }
+            );
+        }
+
         if (paramMethods is not null)
         {
             if (allowedMethods is null)
