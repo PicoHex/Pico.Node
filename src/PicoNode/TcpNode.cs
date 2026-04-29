@@ -34,22 +34,11 @@ public sealed class TcpNode : INode, IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.ReceiveSocketBufferSize, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.SendSocketBufferSize, 0);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.Backlog, 0);
-        if (options.IdleTimeout < TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options.IdleTimeout));
-
-        if (options.IdleScanInterval <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options.IdleScanInterval));
-
-        if (options.AcceptFaultBackoff < TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options.AcceptFaultBackoff));
-
-        if (options.DrainTimeout < TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(options.DrainTimeout));
-
-        if (options.ReceivePipePauseThresholdBytes is <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(options.ReceivePipePauseThresholdBytes));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.IdleTimeout, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.IdleScanInterval, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.AcceptFaultBackoff, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.DrainTimeout, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.ReceivePipePauseThresholdBytes ?? int.MaxValue, 0);
 
         _listener = new Socket(options.Endpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
         {
