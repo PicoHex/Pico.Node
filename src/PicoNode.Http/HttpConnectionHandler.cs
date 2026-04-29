@@ -6,7 +6,6 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
 {
     private readonly HttpConnectionHandlerOptions _options;
     private readonly HttpRequestHandler _requestHandler;
-    private readonly ConcurrentDictionary<long, ConnectionRuntimeState> _connectionStates = new();
 
     public HttpConnectionHandler(HttpConnectionHandlerOptions options)
     {
@@ -47,7 +46,8 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
         CancellationToken cancellationToken
     )
     {
-        if (_connectionStates.TryGetValue(connection.ConnectionId, out var state))
+        var state = connection.UserState as ConnectionRuntimeState;
+        if (state is not null)
         {
             return state.Protocol switch
             {
@@ -71,7 +71,7 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
             case DetectedProtocolKind.IncompleteHttp2Preface:
                 return ValueTask.FromResult(buffer.Start);
             case DetectedProtocolKind.Http2:
-                SetConnectionState(connection.ConnectionId, ConnectionProtocol.Http2);
+                SetConnectionState(connection, ConnectionProtocol.Http2);
                 return Http2ConnectionProcessor.ProcessAsync(
                     connection,
                     protocolDecision.Buffer,
@@ -81,7 +81,7 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
                 );
             case DetectedProtocolKind.Http1:
             default:
-                SetConnectionState(connection.ConnectionId, ConnectionProtocol.Http1);
+                SetConnectionState(connection, ConnectionProtocol.Http1);
                 return HandleHttp1Async(connection, buffer, cancellationToken);
         }
     }
@@ -96,7 +96,6 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
             buffer,
             _options,
             _requestHandler,
-            _connectionStates,
             cancellationToken
         );
 
@@ -107,22 +106,13 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
         CancellationToken cancellationToken
     )
     {
-        _connectionStates.TryRemove(connection.ConnectionId, out _);
+        connection.UserState = null;
         return ValueTask.CompletedTask;
     }
 
-    private void SetConnectionState(long connectionId, ConnectionProtocol protocol)
+    private static void SetConnectionState(ITcpConnectionContext connection, ConnectionProtocol protocol)
     {
-        _connectionStates.AddOrUpdate(
-            connectionId,
-            static (_, value) => new ConnectionRuntimeState { Protocol = value },
-            static (_, existing, value) =>
-            {
-                existing.Protocol = value;
-                return existing;
-            },
-            protocol
-        );
+        connection.UserState = new ConnectionRuntimeState { Protocol = protocol };
     }
 
     private async ValueTask<SequencePosition> ProcessWebSocketFrameAsync(

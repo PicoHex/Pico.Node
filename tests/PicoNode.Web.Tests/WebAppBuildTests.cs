@@ -45,6 +45,8 @@ public sealed class WebAppBuildTests
 
         public DateTimeOffset LastActivityUtc { get; init; } = DateTimeOffset.UnixEpoch;
 
+        public object? UserState { get; set; }
+
         public Task SendAsync(
             ReadOnlySequence<byte> buffer,
             CancellationToken cancellationToken = default

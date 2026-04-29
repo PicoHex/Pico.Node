@@ -389,6 +389,7 @@ public sealed class Http2StreamHandlerTests
         public IPEndPoint RemoteEndPoint => new(IPAddress.Loopback, 12345);
         public DateTimeOffset ConnectedAtUtc => DateTimeOffset.MinValue;
         public DateTimeOffset LastActivityUtc => DateTimeOffset.MinValue;
+        public object? UserState { get; set; }
         public List<byte[]> SentFrames { get; } = new();
         public bool IsClosed { get; private set; }
 

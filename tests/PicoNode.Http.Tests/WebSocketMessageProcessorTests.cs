@@ -566,6 +566,8 @@ public sealed class WebSocketMessageProcessorTests
 
         public DateTimeOffset LastActivityUtc => DateTimeOffset.UnixEpoch;
 
+        public object? UserState { get; set; }
+
         public byte[] LastSent { get; private set; } = [];
 
         public int SendCount { get; private set; }

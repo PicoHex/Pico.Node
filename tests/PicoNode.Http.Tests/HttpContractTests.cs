@@ -85,6 +85,8 @@ public sealed class HttpContractTests
                     nameof(HttpRequest.HeaderFields),
                     nameof(HttpRequest.Headers),
                     nameof(HttpRequest.Method),
+                    nameof(HttpRequest.Path),
+                    nameof(HttpRequest.QueryString),
                     nameof(HttpRequest.Target),
                     nameof(HttpRequest.Version),
                 ]

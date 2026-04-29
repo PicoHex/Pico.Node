@@ -95,6 +95,8 @@ public sealed partial class HttpConnectionHandlerBenchmarks
 
         public DateTimeOffset LastActivityUtc { get; init; } = DateTimeOffset.UnixEpoch;
 
+        public object? UserState { get; set; }
+
         public int SendCount { get; private set; }
 
         public int CloseCount { get; private set; }

@@ -82,6 +82,8 @@ internal static class HttpRequestParser
                 requestLineBytes,
                 out var method,
                 out var target,
+                out var path,
+                out var queryString,
                 out var version
             )
         )
@@ -111,6 +113,8 @@ internal static class HttpRequestParser
                 options,
                 method,
                 target,
+                path,
+                queryString,
                 version,
                 headerResult.HeaderFields,
                 headerResult.Headers,
@@ -123,6 +127,8 @@ internal static class HttpRequestParser
             options,
             method,
             target,
+            path,
+            queryString,
             version,
             headerResult.HeaderFields,
             headerResult.Headers,

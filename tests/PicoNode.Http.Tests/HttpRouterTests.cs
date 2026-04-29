@@ -342,6 +342,15 @@ public sealed class HttpRouterTests
     private static HttpRouter CreateRouter(IReadOnlyList<HttpRoute> routes) =>
         new(new HttpRouterOptions { Routes = routes, });
 
-    private static HttpRequest CreateRequest(string method, string target) =>
-        new() { Method = method, Target = target, };
+    private static HttpRequest CreateRequest(string method, string target)
+    {
+        var queryIndex = target.IndexOf('?');
+        return new()
+        {
+            Method = method,
+            Target = target,
+            Path = queryIndex >= 0 ? target[..queryIndex] : target,
+            QueryString = queryIndex >= 0 ? target[(queryIndex + 1)..] : string.Empty,
+        };
+    }
 }

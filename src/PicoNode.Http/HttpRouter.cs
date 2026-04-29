@@ -34,9 +34,7 @@ public sealed class HttpRouter
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        ReadOnlySpan<char> target = request.Target;
-        var queryIndex = target.IndexOf('?');
-        var path = queryIndex >= 0 ? target[..queryIndex] : target;
+        var path = request.Path.AsSpan();
 
         if (_routes.TryMatch(path, request.Method, out var handler, out var allowHeader))
         {

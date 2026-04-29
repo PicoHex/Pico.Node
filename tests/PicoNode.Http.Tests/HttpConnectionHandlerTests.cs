@@ -1062,6 +1062,8 @@ public sealed class HttpConnectionHandlerTests
 
         public DateTimeOffset LastActivityUtc { get; init; } = DateTimeOffset.UnixEpoch;
 
+        public object? UserState { get; set; }
+
         public byte[] LastSent { get; private set; } = [];
 
         public List<byte[]> AllSent { get; } = [];

@@ -10,11 +10,15 @@ internal static class HttpRequestLineParser
         ReadOnlySpan<byte> line,
         out string method,
         out string target,
+        out string path,
+        out string queryString,
         out HttpVersion version
     )
     {
         method = string.Empty;
         target = string.Empty;
+        path = string.Empty;
+        queryString = string.Empty;
         version = HttpVersion.Http11;
 
         var firstSpace = line.IndexOf((byte)' ');
@@ -59,6 +63,9 @@ internal static class HttpRequestLineParser
 
         method = LookupKnownMethod(methodSpan) ?? Encoding.ASCII.GetString(methodSpan);
         target = Encoding.ASCII.GetString(targetSpan);
+        var queryIndex = target.IndexOf('?');
+        path = queryIndex >= 0 ? target[..queryIndex] : target;
+        queryString = queryIndex >= 0 ? target[(queryIndex + 1)..] : string.Empty;
         return true;
     }
 

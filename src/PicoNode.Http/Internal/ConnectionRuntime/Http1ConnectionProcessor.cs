@@ -37,14 +37,12 @@ internal static class Http1ConnectionProcessor
         ReadOnlySequence<byte> buffer,
         HttpConnectionHandlerOptions options,
         HttpRequestHandler requestHandler,
-        ConcurrentDictionary<long, ConnectionRuntimeState> connectionStates,
         CancellationToken cancellationToken
     )
     {
         var state = GetOrCreateConnectionState(
-            connection.ConnectionId,
-            ConnectionProtocol.Http1,
-            connectionStates
+            connection,
+            ConnectionProtocol.Http1
         );
         var parseResult = HttpRequestParser.Parse(buffer, options);
 
@@ -54,7 +52,6 @@ internal static class Http1ConnectionProcessor
                 => SendContinueIfNeededAsync(
                     connection,
                     parseResult.Consumed,
-                    connectionStates,
                     cancellationToken
                 ),
             { Status: HttpRequestParseStatus.Incomplete }
@@ -72,7 +69,6 @@ internal static class Http1ConnectionProcessor
                     parseResult.Consumed,
                     options,
                     requestHandler,
-                    connectionStates,
                     cancellationToken
                 ),
             { Status: HttpRequestParseStatus.Rejected, Error: { } error }
@@ -87,15 +83,18 @@ internal static class Http1ConnectionProcessor
     }
 
     private static ConnectionRuntimeState GetOrCreateConnectionState(
-        long connectionId,
-        ConnectionProtocol defaultProtocol,
-        ConcurrentDictionary<long, ConnectionRuntimeState> connectionStates
-    ) =>
-        connectionStates.GetOrAdd(
-            connectionId,
-            static (_, protocol) => new ConnectionRuntimeState { Protocol = protocol },
-            defaultProtocol
-        );
+        ITcpConnectionContext connection,
+        ConnectionProtocol defaultProtocol
+    )
+    {
+        var state = connection.UserState as ConnectionRuntimeState;
+        if (state is null)
+        {
+            state = new ConnectionRuntimeState { Protocol = defaultProtocol };
+            connection.UserState = state;
+        }
+        return state;
+    }
 
     private static ValueTask<SequencePosition> CheckRequestTimeoutAsync(
         ITcpConnectionContext connection,
@@ -127,14 +126,12 @@ internal static class Http1ConnectionProcessor
     private static async ValueTask<SequencePosition> SendContinueIfNeededAsync(
         ITcpConnectionContext connection,
         SequencePosition consumed,
-        ConcurrentDictionary<long, ConnectionRuntimeState> connectionStates,
         CancellationToken cancellationToken
     )
     {
         var state = GetOrCreateConnectionState(
-            connection.ConnectionId,
-            ConnectionProtocol.Http1,
-            connectionStates
+            connection,
+            ConnectionProtocol.Http1
         );
         if (!state.ContinueSent)
         {
@@ -154,14 +151,12 @@ internal static class Http1ConnectionProcessor
         SequencePosition consumed,
         HttpConnectionHandlerOptions options,
         HttpRequestHandler requestHandler,
-        ConcurrentDictionary<long, ConnectionRuntimeState> connectionStates,
         CancellationToken cancellationToken
     )
     {
         var state = GetOrCreateConnectionState(
-            connection.ConnectionId,
-            ConnectionProtocol.Http1,
-            connectionStates
+            connection,
+            ConnectionProtocol.Http1
         );
         state.ContinueSent = false;
         state.RequestParsingStartedAtUtc = default;
