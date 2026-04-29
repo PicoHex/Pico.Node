@@ -11,7 +11,7 @@ PicoNode.Abs        Core interfaces                          (netstandard2.0)
     ↓
 PicoNode             TCP & UDP transports                     (net10.0)
     ↓
-PicoNode.Http        HTTP/1.1 protocol handler                (net10.0)
+PicoNode.Http        HTTP/1.1 + HTTP/2 + WebSocket protocols  (net10.0)
     ↓
 PicoNode.Web         Web framework (routing, middleware, …)   (net10.0)
     ↓
@@ -23,6 +23,8 @@ PicoWeb              Ready-to-run web server                  (net10.0)
 - **TCP server** — async socket I/O via `System.IO.Pipelines`, configurable connection limits, idle timeout, TLS/SSL, graceful drain on shutdown
 - **UDP server** — multi-worker queue dispatch, multicast & broadcast, configurable overflow policy (drop / wait)
 - **HTTP/1.1** — streaming request parsing, persistent connections, `100-Continue`, chunked transfer encoding, configurable max request size
+- **HTTP/2** — connection preface detection, frame codec, HPACK header decoding, stream multiplexing (transparently negotiated alongside HTTP/1.1)
+- **WebSocket** — RFC 6455 frame codec, upgrade handshake, message handler abstraction
 - **Web framework** — fluent `WebApp` builder, middleware pipeline, parameterized route patterns (`/users/{id}`), response helpers for text/JSON/redirect
 - **Built-in middleware** — response compression (Brotli, Gzip, Deflate), static file serving, CORS, cookie parsing, multipart form data
 - **AOT & trimming ready** — all net10.0 libraries are publish-AOT and trimming compatible
@@ -148,7 +150,7 @@ await server.StopAsync();
 |---|---|---|
 | **PicoNode.Abs** | netstandard2.0 | Core interfaces: `INode`, `ITcpConnectionHandler`, `IUdpDatagramHandler`, fault codes, enums |
 | **PicoNode** | net10.0 | `TcpNode` and `UdpNode` — production-grade async socket transports |
-| **PicoNode.Http** | net10.0 | `HttpConnectionHandler`, `HttpRouter` — HTTP/1.1 protocol layer with Span-based parsing |
+| **PicoNode.Http** | net10.0 | `HttpConnectionHandler`, `HttpRouter` — HTTP/1.1 with Span-based parsing; HTTP/2 frames + HPACK; WebSocket frames + upgrade |
 | **PicoNode.Web** | net10.0 | `WebApp`, `WebRouter`, middleware, static files, compression, CORS, cookies, multipart |
 | **PicoWeb** | net10.0 | `WebServer` — thin host that wires `WebApp` to `TcpNode` |
 

@@ -311,7 +311,17 @@ public sealed class TcpNode : INode, IAsyncDisposable
 
         if (Options.SslOptions is not null)
         {
-            _ = Task.Run(() => NegotiateAndTrackAsync(socket));
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await NegotiateAndTrackAsync(socket);
+                }
+                catch (Exception ex)
+                {
+                    ReportFault(NodeFaultCode.TlsFailed, OperationTls, ex);
+                }
+            });
             return Task.CompletedTask;
         }
 
