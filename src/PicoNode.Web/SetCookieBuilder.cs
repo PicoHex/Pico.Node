@@ -103,6 +103,6 @@ public sealed class SetCookieBuilder
             sb.Append("; SameSite=").Append(_sameSite);
         }
 
-        return new KeyValuePair<string, string>("Set-Cookie", sb.ToString());
+        return new KeyValuePair<string, string>(HttpHeaderNames.SetCookie, sb.ToString());
     }
 }

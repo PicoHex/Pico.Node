@@ -7,34 +7,34 @@ public static class CorsHandler
         if (!request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        if (!request.Headers.TryGetValue("Origin", out var origin))
+        if (!request.Headers.TryGetValue(HttpHeaderNames.Origin, out var origin))
             return null;
 
         if (!IsOriginAllowed(origin, options))
             return new HttpResponse { StatusCode = 403 };
 
-        if (request.Headers.TryGetValue("Access-Control-Request-Method", out var requestMethod)
+        if (request.Headers.TryGetValue(HttpHeaderNames.AccessControlRequestMethod, out var requestMethod)
             && !IsMethodAllowed(requestMethod, options))
             return new HttpResponse { StatusCode = 403 };
 
         var headers = new HttpHeaderCollection(
 
             [
-                new("Access-Control-Allow-Origin", origin),
-                new("Access-Control-Allow-Methods", options.AllowedMethodsHeader),
-                new("Access-Control-Allow-Headers", options.AllowedHeadersHeader),
+                new(HttpHeaderNames.AccessControlAllowOrigin, origin),
+                new(HttpHeaderNames.AccessControlAllowMethods, options.AllowedMethodsHeader),
+                new(HttpHeaderNames.AccessControlAllowHeaders, options.AllowedHeadersHeader),
             ]
         );
 
         if (options.AllowCredentials)
             headers.Add(
-                new KeyValuePair<string, string>("Access-Control-Allow-Credentials", "true")
+                new KeyValuePair<string, string>(HttpHeaderNames.AccessControlAllowCredentials, "true")
             );
 
         if (options.MaxAge.HasValue)
             headers.Add(
                 new KeyValuePair<string, string>(
-                    "Access-Control-Max-Age",
+                    HttpHeaderNames.AccessControlMaxAge,
                     options.MaxAge.Value.ToString()
                 )
             );
@@ -48,25 +48,25 @@ public static class CorsHandler
     )
     {
         if (
-            !request.Headers.TryGetValue("Origin", out var origin)
+            !request.Headers.TryGetValue(HttpHeaderNames.Origin, out var origin)
             || !IsOriginAllowed(origin, options)
         )
             return [];
 
         var headers = new List<KeyValuePair<string, string>>
         {
-            new("Access-Control-Allow-Origin", origin),
+            new(HttpHeaderNames.AccessControlAllowOrigin, origin),
         };
 
         if (options.AllowCredentials)
             headers.Add(
-                new KeyValuePair<string, string>("Access-Control-Allow-Credentials", "true")
+                new KeyValuePair<string, string>(HttpHeaderNames.AccessControlAllowCredentials, "true")
             );
 
         if (options.ExposedHeaders.Count > 0)
             headers.Add(
                 new KeyValuePair<string, string>(
-                    "Access-Control-Expose-Headers",
+                    HttpHeaderNames.AccessControlExposeHeaders,
                     options.ExposedHeadersHeader
                 )
             );

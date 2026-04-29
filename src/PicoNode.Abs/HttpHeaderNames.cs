@@ -16,4 +16,14 @@ public static class HttpHeaderNames
     public const string Vary = "Vary";
     public const string SetCookie = "Set-Cookie";
     public const string Location = "Location";
+    public const string Expect = "Expect";
+    public const string Authorization = "Authorization";
+    public const string Origin = "Origin";
+    public const string AccessControlRequestMethod = "Access-Control-Request-Method";
+    public const string AccessControlAllowOrigin = "Access-Control-Allow-Origin";
+    public const string AccessControlAllowMethods = "Access-Control-Allow-Methods";
+    public const string AccessControlAllowHeaders = "Access-Control-Allow-Headers";
+    public const string AccessControlAllowCredentials = "Access-Control-Allow-Credentials";
+    public const string AccessControlMaxAge = "Access-Control-Max-Age";
+    public const string AccessControlExposeHeaders = "Access-Control-Expose-Headers";
 }

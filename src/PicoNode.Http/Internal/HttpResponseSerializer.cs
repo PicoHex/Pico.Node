@@ -2,10 +2,6 @@ namespace PicoNode.Http.Internal;
 
 internal static class HttpResponseSerializer
 {
-    private const string ContentLengthHeaderName = "Content-Length";
-    private const string TransferEncodingHeaderName = "Transfer-Encoding";
-    private const string ConnectionHeaderName = "Connection";
-    private const string ServerHeaderName = "Server";
     private const string CloseConnectionHeaderValue = "close";
     private const string ChunkedHeaderValue = "chunked";
     private static readonly Encoding HeaderEncoding = Encoding.ASCII;
@@ -32,7 +28,7 @@ internal static class HttpResponseSerializer
             serverHeader,
             isChunked: false
         );
-        WriteHeader(headerBuffer, ContentLengthHeaderName, response.Body.Length);
+        WriteHeader(headerBuffer, HttpHeaderNames.ContentLength, response.Body.Length);
         WriteCrlf(headerBuffer);
 
         if (response.Body.IsEmpty)
@@ -62,7 +58,7 @@ internal static class HttpResponseSerializer
             serverHeader,
             isChunked: true
         );
-        WriteHeader(headerBuffer, TransferEncodingHeaderName, ChunkedHeaderValue);
+        WriteHeader(headerBuffer, HttpHeaderNames.TransferEncoding, ChunkedHeaderValue);
         WriteCrlf(headerBuffer);
 
         return new ReadOnlySequence<byte>(headerBuffer.WrittenMemory);
@@ -126,18 +122,18 @@ internal static class HttpResponseSerializer
 
         foreach (var header in response.Headers)
         {
-            if (header.Key.Equals(ContentLengthHeaderName, StringComparison.OrdinalIgnoreCase))
+            if (header.Key.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (header.Key.Equals(ConnectionHeaderName, StringComparison.OrdinalIgnoreCase))
+            if (header.Key.Equals(HttpHeaderNames.Connection, StringComparison.OrdinalIgnoreCase))
                 continue;
             if (
                 isChunked
-                && header.Key.Equals(TransferEncodingHeaderName, StringComparison.OrdinalIgnoreCase)
+                && header.Key.Equals(HttpHeaderNames.TransferEncoding, StringComparison.OrdinalIgnoreCase)
             )
                 continue;
             if (
                 !string.IsNullOrEmpty(serverHeader)
-                && header.Key.Equals(ServerHeaderName, StringComparison.OrdinalIgnoreCase)
+                && header.Key.Equals(HttpHeaderNames.Server, StringComparison.OrdinalIgnoreCase)
             )
                 continue;
             WriteHeader(buffer, header.Key, header.Value);
@@ -145,12 +141,12 @@ internal static class HttpResponseSerializer
 
         if (!string.IsNullOrEmpty(serverHeader))
         {
-            WriteHeader(buffer, ServerHeaderName, serverHeader);
+            WriteHeader(buffer, HttpHeaderNames.Server, serverHeader);
         }
 
         if (closeConnection)
         {
-            WriteHeader(buffer, ConnectionHeaderName, CloseConnectionHeaderValue);
+            WriteHeader(buffer, HttpHeaderNames.Connection, CloseConnectionHeaderValue);
         }
     }
 
@@ -174,15 +170,15 @@ internal static class HttpResponseSerializer
 
         if (!string.IsNullOrEmpty(serverHeader))
         {
-            length += ServerHeaderName.Length + serverHeader.Length + 4;
+            length += HttpHeaderNames.Server.Length + serverHeader.Length + 4;
         }
 
         if (closeConnection)
         {
-            length += ConnectionHeaderName.Length + CloseConnectionHeaderValue.Length + 4;
+            length += HttpHeaderNames.Connection.Length + CloseConnectionHeaderValue.Length + 4;
         }
 
-        length += ContentLengthHeaderName.Length + CountDigits(response.Body.Length) + 4;
+        length += HttpHeaderNames.ContentLength.Length + CountDigits(response.Body.Length) + 4;
         return length + 2;
     }
 
@@ -200,11 +196,11 @@ internal static class HttpResponseSerializer
     }
 
     private static bool ShouldSkipApplicationHeader(string name, string? serverHeader) =>
-        name.Equals(ContentLengthHeaderName, StringComparison.OrdinalIgnoreCase)
-        || name.Equals(ConnectionHeaderName, StringComparison.OrdinalIgnoreCase)
+        name.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase)
+        || name.Equals(HttpHeaderNames.Connection, StringComparison.OrdinalIgnoreCase)
         || (
             !string.IsNullOrEmpty(serverHeader)
-            && name.Equals(ServerHeaderName, StringComparison.OrdinalIgnoreCase)
+            && name.Equals(HttpHeaderNames.Server, StringComparison.OrdinalIgnoreCase)
         );
 
     private static string VersionToString(HttpVersion version) => version switch

@@ -3,10 +3,6 @@ namespace PicoNode.Web;
 public sealed class CompressionMiddleware
 {
     private const int DefaultMinimumBodySize = 860;
-    private const string ContentLengthHeaderName = "Content-Length";
-    private const string ContentEncodingHeaderName = "Content-Encoding";
-    private const string VaryHeaderName = "Vary";
-    private const string AcceptEncodingHeaderValue = "Accept-Encoding";
 
     private readonly CompressionLevel _level;
     private readonly int _minimumBodySize;
@@ -29,7 +25,7 @@ public sealed class CompressionMiddleware
     {
         var response = await next(context, cancellationToken);
 
-        if (HasHeader(response.Headers, ContentEncodingHeaderName))
+        if (HasHeader(response.Headers, HttpHeaderNames.ContentEncoding))
         {
             return response;
         }
@@ -87,7 +83,7 @@ public sealed class CompressionMiddleware
 
     internal static string? SelectEncoding(IReadOnlyDictionary<string, string> headers)
     {
-        if (!headers.TryGetValue(AcceptEncodingHeaderValue, out var acceptEncoding))
+        if (!headers.TryGetValue(HttpHeaderNames.AcceptEncoding, out var acceptEncoding))
         {
             return null;
         }
@@ -146,7 +142,7 @@ public sealed class CompressionMiddleware
     private static bool TryGetContentLength(HttpHeaderCollection headers, out long contentLength)
     {
         if (
-            headers.TryGetValue(ContentLengthHeaderName, out var value)
+            headers.TryGetValue(HttpHeaderNames.ContentLength, out var value)
             && long.TryParse(
                 value,
                 NumberStyles.None,
@@ -187,17 +183,17 @@ public sealed class CompressionMiddleware
 
         foreach (var header in sourceHeaders)
         {
-            if (header.Key.Equals(ContentLengthHeaderName, StringComparison.OrdinalIgnoreCase))
+            if (header.Key.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (header.Key.Equals(ContentEncodingHeaderName, StringComparison.OrdinalIgnoreCase))
+            if (header.Key.Equals(HttpHeaderNames.ContentEncoding, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (header.Key.Equals(VaryHeaderName, StringComparison.OrdinalIgnoreCase))
+            if (header.Key.Equals(HttpHeaderNames.Vary, StringComparison.OrdinalIgnoreCase))
             {
                 varyValue = header.Value;
                 continue;
@@ -206,8 +202,8 @@ public sealed class CompressionMiddleware
             headers.Add(header);
         }
 
-        headers.Add(ContentEncodingHeaderName, encoding);
-        headers.Add(VaryHeaderName, MergeVaryHeader(varyValue, AcceptEncodingHeaderValue));
+        headers.Add(HttpHeaderNames.ContentEncoding, encoding);
+        headers.Add(HttpHeaderNames.Vary, MergeVaryHeader(varyValue, HttpHeaderNames.AcceptEncoding));
 
         return headers;
     }

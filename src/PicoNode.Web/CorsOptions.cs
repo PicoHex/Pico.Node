@@ -14,7 +14,7 @@ public sealed class CorsOptions
     public IReadOnlyList<string> AllowedMethods { get; init; } =
         ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"];
 
-    public IReadOnlyList<string> AllowedHeaders { get; init; } = ["Content-Type", "Authorization"];
+    public IReadOnlyList<string> AllowedHeaders { get; init; } = [HttpHeaderNames.ContentType, HttpHeaderNames.Authorization];
 
     public IReadOnlyList<string> ExposedHeaders { get; init; } = [];
 

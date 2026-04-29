@@ -70,7 +70,7 @@ public sealed class StaticFileMiddleware
         var fileInfo = new FileInfo(fullPath);
 
         var headers = new HttpHeaderCollection(
-            [new("Content-Type", contentType), new("Content-Length", fileInfo.Length.ToString()),]
+            [new(HttpHeaderNames.ContentType, contentType), new(HttpHeaderNames.ContentLength, fileInfo.Length.ToString()),]
         );
 
         var isHead = context.Request.Method.Equals("HEAD", StringComparison.OrdinalIgnoreCase);

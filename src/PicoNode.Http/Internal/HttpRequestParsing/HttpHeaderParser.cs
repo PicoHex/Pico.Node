@@ -46,7 +46,7 @@ internal static class HttpHeaderParser
                     .Rejected(HttpRequestParseError.InvalidHeader);
             }
 
-            if (name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
+            if (name.Equals(HttpHeaderNames.TransferEncoding, StringComparison.OrdinalIgnoreCase))
             {
                 if (!value.Equals("chunked", StringComparison.OrdinalIgnoreCase))
                 {
@@ -58,7 +58,7 @@ internal static class HttpHeaderParser
                 isChunked = true;
             }
 
-            if (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+            if (name.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase))
             {
                 if (hasContentLength)
                 {
@@ -85,7 +85,7 @@ internal static class HttpHeaderParser
                 hasContentLength = true;
             }
 
-            if (name.Equals("Host", StringComparison.OrdinalIgnoreCase))
+            if (name.Equals(HttpHeaderNames.Host, StringComparison.OrdinalIgnoreCase))
             {
                 if (hasHost || !HostValidator.IsValidHostHeaderValue(value))
                 {
@@ -137,7 +137,7 @@ internal static class HttpHeaderParser
 
         var expectsContinue =
             version == HttpVersion.Http11
-            && headers.TryGetValue("Expect", out var expectValue)
+            && headers.TryGetValue(HttpHeaderNames.Expect, out var expectValue)
             && expectValue.Equals("100-continue", StringComparison.OrdinalIgnoreCase);
 
         return HttpRequestParser

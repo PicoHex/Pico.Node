@@ -9,7 +9,7 @@ public static class WebResults
             ReasonPhrase = reasonPhrase,
             Headers =
             [
-                new KeyValuePair<string, string>("Content-Type", "text/plain; charset=utf-8"),
+                new KeyValuePair<string, string>(HttpHeaderNames.ContentType, "text/plain; charset=utf-8"),
             ],
             Body = Encoding.UTF8.GetBytes(body),
         };
@@ -21,7 +21,7 @@ public static class WebResults
             ReasonPhrase = reasonPhrase,
             Headers =
             [
-                new KeyValuePair<string, string>("Content-Type", "application/json; charset=utf-8"),
+                new KeyValuePair<string, string>(HttpHeaderNames.ContentType, "application/json; charset=utf-8"),
             ],
             Body = Encoding.UTF8.GetBytes(json),
         };
@@ -36,7 +36,7 @@ public static class WebResults
         {
             StatusCode = statusCode,
             ReasonPhrase = reasonPhrase,
-            Headers =  [new KeyValuePair<string, string>("Content-Type", contentType),],
+            Headers =  [new KeyValuePair<string, string>(HttpHeaderNames.ContentType, contentType),],
             Body = body,
         };
 
@@ -48,6 +48,6 @@ public static class WebResults
         {
             StatusCode = permanent ? 301 : 302,
             ReasonPhrase = permanent ? "Moved Permanently" : "Found",
-            Headers =  [new KeyValuePair<string, string>("Location", location),],
+            Headers =  [new KeyValuePair<string, string>(HttpHeaderNames.Location, location),],
         };
 }

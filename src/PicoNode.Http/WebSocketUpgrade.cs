@@ -12,7 +12,7 @@ public static class WebSocketUpgrade
         if (!HasHeader(request, "Upgrade", "websocket"))
             return null;
 
-        if (!HasHeader(request, "Connection", "Upgrade"))
+        if (!HasHeader(request, HttpHeaderNames.Connection, "Upgrade"))
             return null;
 
         if (
@@ -36,7 +36,7 @@ public static class WebSocketUpgrade
             Headers =
             [
                 new KeyValuePair<string, string>("Upgrade", "websocket"),
-                new KeyValuePair<string, string>("Connection", "Upgrade"),
+                new KeyValuePair<string, string>(HttpHeaderNames.Connection, "Upgrade"),
                 new KeyValuePair<string, string>("Sec-WebSocket-Accept", acceptKey),
             ],
         };
@@ -49,7 +49,7 @@ public static class WebSocketUpgrade
 
         return response.Headers.TryGetValue("Upgrade", out var upgrade)
             && upgrade.Contains("websocket", StringComparison.OrdinalIgnoreCase)
-            && response.Headers.TryGetValue("Connection", out var connection)
+            && response.Headers.TryGetValue(HttpHeaderNames.Connection, out var connection)
             && connection.Contains("Upgrade", StringComparison.OrdinalIgnoreCase);
     }
 

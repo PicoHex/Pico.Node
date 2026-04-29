@@ -27,7 +27,7 @@ public static class MultipartFormDataParser
             MultipartFormDataParserOptions.DefaultMaxBoundaryLength
         );
 
-        var contentType = GetHeaderValue(request.HeaderFields, "Content-Type");
+        var contentType = GetHeaderValue(request.HeaderFields, HttpHeaderNames.ContentType);
         if (contentType is null)
             return null;
 
@@ -130,7 +130,7 @@ public static class MultipartFormDataParser
 
         if (fileName is not null)
         {
-            var ct = GetPartHeaderValue(headers, "Content-Type") ?? "application/octet-stream";
+            var ct = GetPartHeaderValue(headers, HttpHeaderNames.ContentType) ?? "application/octet-stream";
             files.Add(new MultipartFormFile(name, fileName, ct, content));
         }
         else
