@@ -99,7 +99,6 @@ internal static class HttpResponseSerializer
 
     private static void ValidateResponse(HttpResponse response, string? serverHeader)
     {
-        ValidateStatusLinePart(response.Version, nameof(response.Version));
         ValidateStatusLinePart(response.ReasonPhrase, nameof(response.ReasonPhrase));
         ValidateOptionalHeaderValue(serverHeader, nameof(serverHeader));
 
@@ -118,7 +117,7 @@ internal static class HttpResponseSerializer
         bool isChunked
     )
     {
-        WriteAscii(buffer, response.Version);
+        WriteAscii(buffer, VersionToString(response.Version));
         WriteAscii(buffer, " ");
         WriteInt(buffer, response.StatusCode);
         WriteAscii(buffer, " ");
@@ -161,7 +160,7 @@ internal static class HttpResponseSerializer
         string? serverHeader
     )
     {
-        var length = response.Version.Length + response.ReasonPhrase.Length + 32;
+        var length = HttpVersionStringLength + response.ReasonPhrase.Length + 32;
 
         foreach (var header in response.Headers)
         {
@@ -207,6 +206,15 @@ internal static class HttpResponseSerializer
             !string.IsNullOrEmpty(serverHeader)
             && name.Equals(ServerHeaderName, StringComparison.OrdinalIgnoreCase)
         );
+
+    private static string VersionToString(HttpVersion version) => version switch
+    {
+        HttpVersion.Http10 => "HTTP/1.0",
+        HttpVersion.Http11 => "HTTP/1.1",
+        _ => "HTTP/1.1",
+    };
+
+    private const int HttpVersionStringLength = 8; // "HTTP/1.0" or "HTTP/1.1"
 
     private static void ValidateStatusLinePart(string value, string paramName)
     {

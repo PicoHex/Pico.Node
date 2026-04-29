@@ -1,27 +1,21 @@
-namespace PicoNode.Web;
-
+using PicoNode.Http.Internal;
 using PicoNode.Web.Internal;
+
+namespace PicoNode.Web;
 
 internal sealed class WebRouter
 {
-    private static readonly HttpResponse NotFoundResponse =
-        new() { StatusCode = 404, ReasonPhrase = "Not Found", };
-
-    private readonly Dictionary<string, Dictionary<string, WebRequestHandler>> _exactRoutes;
+    private readonly RouteTable<WebRequestHandler> _exactRouteTable;
     private readonly RadixTree<CompiledRoute> _paramTree;
-    private readonly WebRequestHandler? _fallbackHandler;
-    private readonly Dictionary<string, string> _exactAllowHeaderCache =
-        new(StringComparer.Ordinal);
 
     internal WebRouter(IReadOnlyList<WebRoute> routes, WebRequestHandler? fallbackHandler = null)
     {
         ArgumentNullException.ThrowIfNull(routes);
 
-        _fallbackHandler = fallbackHandler;
-        _exactRoutes = new Dictionary<string, Dictionary<string, WebRequestHandler>>(
-            StringComparer.Ordinal
-        );
         _paramTree = new RadixTree<CompiledRoute>();
+        var exactRouteList = new List<
+            (string Method, string Path, WebRequestHandler Handler)
+        >();
 
         foreach (var route in routes)
         {
@@ -34,12 +28,18 @@ internal sealed class WebRouter
 
             if (string.IsNullOrWhiteSpace(route.Pattern))
             {
-                throw new ArgumentException("Route patterns must not be blank.", nameof(routes));
+                throw new ArgumentException(
+                    "Route patterns must not be blank.",
+                    nameof(routes)
+                );
             }
 
             if (!route.Pattern.StartsWith('/'))
             {
-                throw new ArgumentException("Route patterns must start with '/'.", nameof(routes));
+                throw new ArgumentException(
+                    "Route patterns must start with '/'.",
+                    nameof(routes)
+                );
             }
 
             if (route.Pattern.Contains('?'))
@@ -55,19 +55,7 @@ internal sealed class WebRouter
 
             if (pattern.IsExact)
             {
-                if (!_exactRoutes.TryGetValue(route.Pattern, out var methods))
-                {
-                    methods = new Dictionary<string, WebRequestHandler>(StringComparer.Ordinal);
-                    _exactRoutes[route.Pattern] = methods;
-                }
-
-                if (!methods.TryAdd(method, route.Handler))
-                {
-                    throw new ArgumentException(
-                        $"Duplicate route registration for method '{method}' and pattern '{route.Pattern}'.",
-                        nameof(routes)
-                    );
-                }
+                exactRouteList.Add((method, route.Pattern, route.Handler));
             }
             else
             {
@@ -89,14 +77,11 @@ internal sealed class WebRouter
             }
         }
 
-        // Precompute Allow header per exact pattern to avoid per-request sort+join on the 405 path.
-        foreach (var entry in _exactRoutes)
-        {
-            var methods = new string[entry.Value.Count];
-            entry.Value.Keys.CopyTo(methods, 0);
-            Array.Sort(methods, StringComparer.Ordinal);
-            _exactAllowHeaderCache.Add(entry.Key, string.Join(", ", methods));
-        }
+        _exactRouteTable = new RouteTable<WebRequestHandler>(
+            exactRouteList,
+            fallbackHandler,
+            nameof(routes)
+        );
     }
 
     internal ValueTask<HttpResponse> HandleAsync(
@@ -108,17 +93,38 @@ internal sealed class WebRouter
         var method = context.Request.Method;
         List<string>? allowedMethods = null;
 
-        if (_exactRoutes.TryGetValue(path, out var exactMethods))
+        // Try exact match
+        if (
+            _exactRouteTable.TryMatch(
+                path,
+                method,
+                out var handler,
+                out var allowHeader
+            )
+        )
         {
-            if (exactMethods.TryGetValue(method, out var handler))
-            {
-                return handler(context, cancellationToken);
-            }
-
-            allowedMethods =  [.. exactMethods.Keys];
+            return handler(context, cancellationToken);
         }
 
-        if (_paramTree.TryMatch(path, method, out var compiledRoute, out var routeValues))
+        // Exact path exists but method did not match — collect methods for potential 405
+        if (allowHeader is not null)
+        {
+            var exactMethods = _exactRouteTable.GetMethodsForPath(path);
+            if (exactMethods is not null)
+            {
+                allowedMethods = [.. exactMethods];
+            }
+        }
+
+        // Try parameterized route
+        if (
+            _paramTree.TryMatch(
+                path,
+                method,
+                out var compiledRoute,
+                out var routeValues
+            )
+        )
         {
             if (routeValues.Count > 0)
             {
@@ -128,27 +134,8 @@ internal sealed class WebRouter
             return compiledRoute.Handler(context, cancellationToken);
         }
 
+        // Collect methods from param tree for 405
         var paramMethods = _paramTree.TryGetMethodsForPath(path);
-        if (paramMethods is null && allowedMethods is { Count: > 0 } && exactMethods is not null)
-        {
-            // Fast path: the only matching methods come from a single exact pattern,
-            // so we can use the precomputed Allow header instead of sort+join.
-            return ValueTask.FromResult(
-                new HttpResponse
-                {
-                    StatusCode = 405,
-                    ReasonPhrase = "Method Not Allowed",
-                    Headers =
-                    [
-                        new KeyValuePair<string, string>(
-                            "Allow",
-                            _exactAllowHeaderCache[path]
-                        ),
-                    ],
-                }
-            );
-        }
-
         if (paramMethods is not null)
         {
             if (allowedMethods is null)
@@ -167,24 +154,27 @@ internal sealed class WebRouter
             }
         }
 
+        // Return 405 with merged Allow header
         if (allowedMethods is { Count: > 0 })
         {
+            // Fast path: only exact-route methods — use precomputed Allow header
+            if (paramMethods is null && allowHeader is not null)
+            {
+                return ValueTask.FromResult(
+                    RouteTable<WebRequestHandler>.MethodNotAllowedResponse(allowHeader)
+                );
+            }
+
             allowedMethods.Sort(StringComparer.Ordinal);
             return ValueTask.FromResult(
-                new HttpResponse
-                {
-                    StatusCode = 405,
-                    ReasonPhrase = "Method Not Allowed",
-                    Headers =
-                    [
-                        new KeyValuePair<string, string>("Allow", string.Join(", ", allowedMethods)),
-                    ],
-                }
+                RouteTable<WebRequestHandler>.MethodNotAllowedResponse(
+                    string.Join(", ", allowedMethods)
+                )
             );
         }
 
-        return _fallbackHandler?.Invoke(context, cancellationToken)
-            ?? ValueTask.FromResult(NotFoundResponse);
+        return _exactRouteTable.Fallback?.Invoke(context, cancellationToken)
+            ?? ValueTask.FromResult(RouteTable<WebRequestHandler>.NotFoundResponse);
     }
 
     private sealed class CompiledRoute(

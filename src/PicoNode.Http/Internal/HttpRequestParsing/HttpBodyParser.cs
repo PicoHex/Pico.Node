@@ -7,7 +7,7 @@ internal static class HttpBodyParser
         HttpConnectionHandlerOptions options,
         string method,
         string target,
-        string version,
+        HttpVersion version,
         List<KeyValuePair<string, string>> headerFields,
         Dictionary<string, string> headers,
         long contentLength,
@@ -71,7 +71,7 @@ internal static class HttpBodyParser
         HttpConnectionHandlerOptions options,
         string method,
         string target,
-        string version,
+        HttpVersion version,
         List<KeyValuePair<string, string>> headerFields,
         Dictionary<string, string> headers,
         bool expectsContinue

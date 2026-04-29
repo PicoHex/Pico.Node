@@ -29,7 +29,7 @@ public sealed class HttpRequestParserTests
             result.Request ?? throw new InvalidOperationException("Request should be present.");
         await Assert.That(request.Method).IsEqualTo("POST");
         await Assert.That(request.Target).IsEqualTo("/submit");
-        await Assert.That(request.Version).IsEqualTo("HTTP/1.1");
+        await Assert.That(request.Version).IsEqualTo(HttpVersion.Http11);
         await Assert.That(request.Headers["host"]).IsEqualTo("Example.com");
         await Assert.That(request.Headers["content-length"]).IsEqualTo("5");
         await Assert.That(Encoding.ASCII.GetString(request.Body.ToArray())).IsEqualTo("hello");
@@ -735,7 +735,7 @@ public sealed class HttpRequestParserTests
         );
 
         await Assert.That(result.Status).IsEqualTo(HttpRequestParseStatus.Success);
-        await Assert.That(result.Request!.Version).IsEqualTo("HTTP/1.0");
+        await Assert.That(result.Request!.Version).IsEqualTo(HttpVersion.Http10);
         await Assert.That(result.Request.Method).IsEqualTo("GET");
     }
 
@@ -756,7 +756,7 @@ public sealed class HttpRequestParserTests
         );
 
         await Assert.That(result.Status).IsEqualTo(HttpRequestParseStatus.Success);
-        await Assert.That(result.Request!.Version).IsEqualTo("HTTP/1.0");
+        await Assert.That(result.Request!.Version).IsEqualTo(HttpVersion.Http10);
         await Assert.That(result.Request.Method).IsEqualTo("POST");
         await Assert.That(Encoding.ASCII.GetString(result.Request.Body.Span)).IsEqualTo("abc");
     }

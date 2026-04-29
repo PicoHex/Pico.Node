@@ -161,13 +161,25 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
             return new ProtocolDecision(DetectedProtocolKind.Http1, buffer);
         }
 
-        var candidateLength = (int)Math.Min(buffer.Length, preface.Length);
-        Span<byte> candidate = stackalloc byte[candidateLength];
-        buffer.Slice(0, candidateLength).CopyTo(candidate);
-
-        if (!candidate.SequenceEqual(preface[..candidateLength]))
+        if (buffer.IsSingleSegment)
         {
-            return new ProtocolDecision(DetectedProtocolKind.Http1, buffer);
+            var span = buffer.FirstSpan;
+            var compareLength = Math.Min(span.Length, preface.Length);
+            if (!span[..compareLength].SequenceEqual(preface[..compareLength]))
+            {
+                return new ProtocolDecision(DetectedProtocolKind.Http1, buffer);
+            }
+        }
+        else
+        {
+            var candidateLength = (int)Math.Min(buffer.Length, preface.Length);
+            Span<byte> candidate = stackalloc byte[candidateLength];
+            buffer.Slice(0, candidateLength).CopyTo(candidate);
+
+            if (!candidate.SequenceEqual(preface[..candidateLength]))
+            {
+                return new ProtocolDecision(DetectedProtocolKind.Http1, buffer);
+            }
         }
 
         if (buffer.Length < preface.Length)

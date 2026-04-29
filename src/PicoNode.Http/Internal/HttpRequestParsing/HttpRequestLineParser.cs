@@ -10,12 +10,12 @@ internal static class HttpRequestLineParser
         ReadOnlySpan<byte> line,
         out string method,
         out string target,
-        out string version
+        out HttpVersion version
     )
     {
         method = string.Empty;
         target = string.Empty;
-        version = string.Empty;
+        version = HttpVersion.Http11;
 
         var firstSpace = line.IndexOf((byte)' ');
         if (firstSpace <= 0)
@@ -46,11 +46,11 @@ internal static class HttpRequestLineParser
 
         if (versionSpan.SequenceEqual("HTTP/1.1"u8))
         {
-            version = "HTTP/1.1";
+            version = HttpVersion.Http11;
         }
         else if (versionSpan.SequenceEqual("HTTP/1.0"u8))
         {
-            version = "HTTP/1.0";
+            version = HttpVersion.Http10;
         }
         else
         {

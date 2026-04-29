@@ -261,15 +261,15 @@ Both `TcpNode` and `UdpNode` expose real-time counters:
 
 ```csharp
 // TCP
-tcpNode.TotalAccepted      // connections accepted
-tcpNode.ActiveConnections   // currently open
-tcpNode.TotalBytesSent
-tcpNode.TotalBytesReceived
+tcpNode.GetMetrics().TotalAccepted      // connections accepted
+tcpNode.GetMetrics().ActiveConnections   // currently open
+tcpNode.GetMetrics().TotalBytesSent
+tcpNode.GetMetrics().TotalBytesReceived
 
 // UDP
-udpNode.TotalDatagramsReceived
-udpNode.TotalDatagramsSent
-udpNode.TotalDropped        // datagrams dropped due to overflow
+udpNode.GetMetrics().TotalDatagramsReceived
+udpNode.GetMetrics().TotalDatagramsSent
+udpNode.GetMetrics().TotalDropped        // datagrams dropped due to overflow
 ```
 
 ## Samples

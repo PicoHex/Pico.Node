@@ -99,7 +99,7 @@ public sealed class HttpContractTests
             .IsEqualTo(typeof(string));
         await Assert
             .That(type.GetProperty(nameof(HttpRequest.Version))?.PropertyType)
-            .IsEqualTo(typeof(string));
+            .IsEqualTo(typeof(HttpVersion));
         await Assert
             .That(type.GetProperty(nameof(HttpRequest.HeaderFields))?.PropertyType)
             .IsEqualTo(typeof(IReadOnlyList<KeyValuePair<string, string>>));
@@ -141,7 +141,7 @@ public sealed class HttpContractTests
             .IsEqualTo(typeof(string));
         await Assert
             .That(type.GetProperty(nameof(HttpResponse.Version))?.PropertyType)
-            .IsEqualTo(typeof(string));
+            .IsEqualTo(typeof(HttpVersion));
         await Assert
             .That(type.GetProperty(nameof(HttpResponse.Headers))?.PropertyType)
             .IsEqualTo(typeof(HttpHeaderCollection));

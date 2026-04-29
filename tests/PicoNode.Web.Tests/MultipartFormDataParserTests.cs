@@ -9,7 +9,7 @@ public sealed class MultipartFormDataParserTests
         {
             Method = "POST",
             Target = "/upload",
-            Version = "HTTP/1.1",
+            Version = HttpVersion.Http11,
             HeaderFields =
             [
                 new("Content-Type", $"multipart/form-data; boundary={boundary}"),
@@ -205,7 +205,7 @@ public sealed class MultipartFormDataParserTests
         {
             Method = "POST",
             Target = "/submit",
-            Version = "HTTP/1.1",
+            Version = HttpVersion.Http11,
             HeaderFields =  [new("Content-Type", "application/json"), new("Host", "localhost"),],
             Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -227,7 +227,7 @@ public sealed class MultipartFormDataParserTests
         {
             Method = "POST",
             Target = "/submit",
-            Version = "HTTP/1.1",
+            Version = HttpVersion.Http11,
             HeaderFields =  [],
             Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             Body = ReadOnlyMemory<byte>.Empty,
@@ -406,7 +406,7 @@ public sealed class MultipartFormDataParserTests
         {
             Method = "POST",
             Target = "/upload",
-            Version = "HTTP/1.1",
+            Version = HttpVersion.Http11,
             HeaderFields =
             [
                 new("Content-Type", $"multipart/form-data; boundary={boundary}"),

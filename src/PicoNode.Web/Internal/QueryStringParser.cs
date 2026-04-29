@@ -2,14 +2,16 @@ namespace PicoNode.Web.Internal;
 
 internal static class QueryStringParser
 {
-    internal static Dictionary<string, string> Parse(string queryString)
-    {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, string> Empty = new(StringComparer.OrdinalIgnoreCase);
 
+    internal static IReadOnlyDictionary<string, string> Parse(string queryString)
+    {
         if (string.IsNullOrEmpty(queryString))
         {
-            return result;
+            return Empty;
         }
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var span = queryString.AsSpan();
 

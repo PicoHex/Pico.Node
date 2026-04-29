@@ -5,7 +5,7 @@ internal static class HttpHeaderParser
     public static HttpRequestParser.HeaderParseState ParseHeaders(
         ref HttpRequestParser.BufferReader reader,
         HttpConnectionHandlerOptions options,
-        string version
+        HttpVersion version
     )
     {
         var headerFields = new List<KeyValuePair<string, string>>(capacity: 16);
@@ -105,7 +105,7 @@ internal static class HttpHeaderParser
             }
         }
 
-        if (!hasHost && version == "HTTP/1.1")
+        if (!hasHost && version == HttpVersion.Http11)
         {
             return HttpRequestParser
                 .HeaderParseState
@@ -120,7 +120,7 @@ internal static class HttpHeaderParser
         }
 
         var expectsContinue =
-            version == "HTTP/1.1"
+            version == HttpVersion.Http11
             && headers.TryGetValue("Expect", out var expectValue)
             && expectValue.Equals("100-continue", StringComparison.OrdinalIgnoreCase);
 

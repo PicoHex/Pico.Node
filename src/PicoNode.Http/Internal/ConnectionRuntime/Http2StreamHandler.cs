@@ -79,7 +79,7 @@ internal static class Http2StreamHandler
         {
             Method = method,
             Target = path,
-            Version = "HTTP/2",
+            Version = HttpVersion.Http11,
             HeaderFields = regularHeaders,
             Headers = headerDict,
         };

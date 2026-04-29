@@ -6,7 +6,7 @@ public sealed class HttpRequest
 
     public required string Target { get; init; }
 
-    public string Version { get; init; } = "HTTP/1.1";
+    public HttpVersion Version { get; init; } = HttpVersion.Http11;
 
     public IReadOnlyList<KeyValuePair<string, string>> HeaderFields { get; init; } = [];
 

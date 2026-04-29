@@ -22,7 +22,7 @@ public sealed class WebSocketTests
         {
             Method = "GET",
             Target = "/ws",
-            Version = "HTTP/1.1",
+            Version = HttpVersion.Http11,
             HeaderFields = headers,
             Headers = headers.ToDictionary(
                 h => h.Key,
@@ -64,7 +64,7 @@ public sealed class WebSocketTests
         {
             Method = "POST",
             Target = "/ws",
-            Version = "HTTP/1.1",
+            Version = HttpVersion.Http11,
             HeaderFields =
             [
                 new("Upgrade", "websocket"),
@@ -102,7 +102,7 @@ public sealed class WebSocketTests
         {
             Method = "GET",
             Target = "/ws",
-            Version = "HTTP/1.1",
+            Version = HttpVersion.Http11,
             HeaderFields = headers,
             Headers = headers.ToDictionary(
                 h => h.Key,

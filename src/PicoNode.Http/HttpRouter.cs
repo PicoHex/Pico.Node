@@ -1,78 +1,30 @@
+using PicoNode.Http.Internal;
+
 namespace PicoNode.Http;
 
 public sealed class HttpRouter
 {
-    private readonly Dictionary<string, Dictionary<string, HttpRequestHandler>> _handlersByPath;
-    private readonly Dictionary<string, string> _allowHeaderByPath;
-    private readonly HttpRequestHandler? _fallbackHandler;
+    private readonly RouteTable<HttpRequestHandler> _routes;
 
     public HttpRouter(HttpRouterOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.Routes);
 
-        _fallbackHandler = options.FallbackHandler;
-        _handlersByPath = new Dictionary<string, Dictionary<string, HttpRequestHandler>>(
-            StringComparer.Ordinal
+        var routeList = new List<(string Method, string Path, HttpRequestHandler Handler)>(
+            options.Routes.Count
         );
-        _allowHeaderByPath = new Dictionary<string, string>(StringComparer.Ordinal);
-
         foreach (var route in options.Routes)
         {
             ArgumentNullException.ThrowIfNull(route);
-
-            if (string.IsNullOrWhiteSpace(route.Method))
-            {
-                throw new ArgumentException("Route methods must not be blank.", nameof(options));
-            }
-
-            if (string.IsNullOrWhiteSpace(route.Path))
-            {
-                throw new ArgumentException("Route paths must not be blank.", nameof(options));
-            }
-
-            if (!route.Path.StartsWith('/'))
-            {
-                throw new ArgumentException("Route paths must start with '/'.", nameof(options));
-            }
-
-            if (route.Path.Contains('?'))
-            {
-                throw new ArgumentException(
-                    "Route paths must not contain query components.",
-                    nameof(options)
-                );
-            }
-
-            var method = route.Method.Trim();
-
-            if (!_handlersByPath.TryGetValue(route.Path, out var handlersByMethod))
-            {
-                handlersByMethod = new Dictionary<string, HttpRequestHandler>(
-                    StringComparer.Ordinal
-                );
-                _handlersByPath.Add(route.Path, handlersByMethod);
-            }
-
-            if (!handlersByMethod.TryAdd(method, route.Handler))
-            {
-                throw new ArgumentException(
-                    $"Duplicate route registration for method '{method}' and path '{route.Path}'.",
-                    nameof(options)
-                );
-            }
+            routeList.Add((route.Method, route.Path, route.Handler));
         }
 
-        foreach (var entry in _handlersByPath)
-        {
-            _allowHeaderByPath.Add(
-                entry.Key,
-                string.Join(
-                    ", ",
-                    entry.Value.Keys.OrderBy(static key => key, StringComparer.Ordinal)
-                )
-            );
-        }
+        _routes = new RouteTable<HttpRequestHandler>(
+            routeList,
+            options.FallbackHandler,
+            nameof(options)
+        );
     }
 
     public ValueTask<HttpResponse> HandleAsync(
@@ -86,33 +38,23 @@ public sealed class HttpRouter
         var queryIndex = target.IndexOf('?');
         var path = queryIndex >= 0 ? target[..queryIndex] : target;
 
-        var pathLookup = _handlersByPath.GetAlternateLookup<ReadOnlySpan<char>>();
-        if (pathLookup.TryGetValue(path, out var handlersByMethod))
+        if (_routes.TryMatch(path, request.Method, out var handler, out var allowHeader))
         {
-            if (handlersByMethod.TryGetValue(request.Method, out var handler))
-            {
-                return handler(request, cancellationToken);
-            }
+            return handler(request, cancellationToken);
+        }
 
-            var allowLookup = _allowHeaderByPath.GetAlternateLookup<ReadOnlySpan<char>>();
-            allowLookup.TryGetValue(path, out var allow);
+        if (allowHeader is not null)
+        {
             return ValueTask.FromResult(
-                new HttpResponse
-                {
-                    StatusCode = 405,
-                    ReasonPhrase = "Method Not Allowed",
-                    Headers =  [new KeyValuePair<string, string>("Allow", allow!),],
-                }
+                RouteTable<HttpRequestHandler>.MethodNotAllowedResponse(allowHeader)
             );
         }
 
-        if (_fallbackHandler is not null)
+        if (_routes.Fallback is not null)
         {
-            return _fallbackHandler(request, cancellationToken);
+            return _routes.Fallback(request, cancellationToken);
         }
 
-        return ValueTask.FromResult(
-            new HttpResponse { StatusCode = 404, ReasonPhrase = "Not Found", }
-        );
+        return ValueTask.FromResult(RouteTable<HttpRequestHandler>.NotFoundResponse);
     }
 }

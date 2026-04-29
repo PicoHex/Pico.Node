@@ -9,8 +9,8 @@ public sealed class HttpResponse
     /// <summary>Optional reason phrase sent after the status code (e.g. "OK", "Not Found").</summary>
     public string ReasonPhrase { get; init; } = string.Empty;
 
-    /// <summary>HTTP version string, defaults to "HTTP/1.1".</summary>
-    public string Version { get; init; } = "HTTP/1.1";
+    /// <summary>HTTP version, defaults to HTTP/1.1.</summary>
+    public HttpVersion Version { get; init; } = HttpVersion.Http11;
 
     /// <summary>Response header collection. Populate with Content-Type, Content-Length, etc.</summary>
     public HttpHeaderCollection Headers { get; init; } = new();

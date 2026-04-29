@@ -173,7 +173,7 @@ internal static class Http1ConnectionProcessor
 
             if (response.BodyStream is not null)
             {
-                if (request.Version == "HTTP/1.0")
+                if (request.Version == HttpVersion.Http10)
                 {
                     var buffered = await BufferStreamResponseAsync(response, cancellationToken);
                     await SendResponseAsync(
@@ -366,7 +366,7 @@ internal static class Http1ConnectionProcessor
 
     private static bool ShouldCloseConnection(HttpRequest request)
     {
-        var isHttp10 = request.Version == "HTTP/1.0";
+        var isHttp10 = request.Version == HttpVersion.Http10;
 
         if (!request.Headers.TryGetValue("Connection", out var connectionValue))
         {
