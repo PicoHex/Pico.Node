@@ -130,7 +130,9 @@ public static class MultipartFormDataParser
 
         if (fileName is not null)
         {
-            var ct = GetPartHeaderValue(headers, HttpHeaderNames.ContentType) ?? "application/octet-stream";
+            var ct =
+                GetPartHeaderValue(headers, HttpHeaderNames.ContentType)
+                ?? "application/octet-stream";
             files.Add(new MultipartFormFile(name, fileName, ct, content));
         }
         else
@@ -177,16 +179,14 @@ public static class MultipartFormDataParser
 
             if (lineEnd >= 0)
             {
-                var end = lineEnd > 0 && remaining[lineEnd - 1] == '\r'
-                    ? lineEnd - 1
-                    : lineEnd;
+                var end = lineEnd > 0 && remaining[lineEnd - 1] == '\r' ? lineEnd - 1 : lineEnd;
                 line = remaining[..end];
                 remaining = remaining[(lineEnd + 1)..];
             }
             else
             {
                 line = remaining;
-                remaining = [];
+                remaining =  [];
             }
 
             var colonIdx = line.IndexOf(':');

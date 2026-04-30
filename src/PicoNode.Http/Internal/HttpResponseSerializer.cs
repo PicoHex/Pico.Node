@@ -122,13 +122,17 @@ internal static class HttpResponseSerializer
 
         foreach (var header in response.Headers)
         {
-            if (header.Key.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase))
+            if (
+                header.Key.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase)
+            )
                 continue;
             if (header.Key.Equals(HttpHeaderNames.Connection, StringComparison.OrdinalIgnoreCase))
                 continue;
             if (
                 isChunked
-                && header.Key.Equals(HttpHeaderNames.TransferEncoding, StringComparison.OrdinalIgnoreCase)
+                && header
+                    .Key
+                    .Equals(HttpHeaderNames.TransferEncoding, StringComparison.OrdinalIgnoreCase)
             )
                 continue;
             if (
@@ -203,12 +207,13 @@ internal static class HttpResponseSerializer
             && name.Equals(HttpHeaderNames.Server, StringComparison.OrdinalIgnoreCase)
         );
 
-    private static string VersionToString(HttpVersion version) => version switch
-    {
-        HttpVersion.Http10 => "HTTP/1.0",
-        HttpVersion.Http11 => "HTTP/1.1",
-        _ => "HTTP/1.1",
-    };
+    private static string VersionToString(HttpVersion version) =>
+        version switch
+        {
+            HttpVersion.Http10 => "HTTP/1.0",
+            HttpVersion.Http11 => "HTTP/1.1",
+            _ => "HTTP/1.1",
+        };
 
     private const int HttpVersionStringLength = 8; // "HTTP/1.0" or "HTTP/1.1"
 

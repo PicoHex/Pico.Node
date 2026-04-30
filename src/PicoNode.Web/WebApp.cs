@@ -62,7 +62,7 @@ public sealed class WebApp
     /// <summary>Builds the middleware pipeline and returns an <c>ITcpConnectionHandler</c> (backed by <c>HttpConnectionHandler</c>) ready for use with TcpNode.</summary>
     public ITcpConnectionHandler Build(PicoNode.Web.Abstractions.IServiceProvider? container = null)
     {
-        _middlewares = [.._middlewares];
+        _middlewares =  [.._middlewares];
         if (container is not null)
         {
             _middlewares.Insert(0, ScopeMiddleware.Create(container));
@@ -88,7 +88,9 @@ public sealed class WebApp
                     ?? HttpConnectionHandlerOptions.DefaultStreamingResponseBufferSize,
                 RequestTimeout =
                     _options?.RequestTimeout
-                    ?? TimeSpan.FromSeconds(HttpConnectionHandlerOptions.DefaultRequestTimeoutSeconds),
+                    ?? TimeSpan.FromSeconds(
+                        HttpConnectionHandlerOptions.DefaultRequestTimeoutSeconds
+                    ),
                 WebSocketMessageHandler = _options?.WebSocketMessageHandler,
             }
         );

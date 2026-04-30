@@ -40,20 +40,13 @@ internal static class Http1ConnectionProcessor
         CancellationToken cancellationToken
     )
     {
-        var state = GetOrCreateConnectionState(
-            connection,
-            ConnectionProtocol.Http1
-        );
+        var state = GetOrCreateConnectionState(connection, ConnectionProtocol.Http1);
         var parseResult = HttpRequestParser.Parse(buffer, options);
 
         return parseResult switch
         {
             { Status: HttpRequestParseStatus.Incomplete, ExpectsContinue: true }
-                => SendContinueIfNeededAsync(
-                    connection,
-                    parseResult.Consumed,
-                    cancellationToken
-                ),
+                => SendContinueIfNeededAsync(connection, parseResult.Consumed, cancellationToken),
             { Status: HttpRequestParseStatus.Incomplete }
                 => CheckRequestTimeoutAsync(
                     connection,
@@ -129,10 +122,7 @@ internal static class Http1ConnectionProcessor
         CancellationToken cancellationToken
     )
     {
-        var state = GetOrCreateConnectionState(
-            connection,
-            ConnectionProtocol.Http1
-        );
+        var state = GetOrCreateConnectionState(connection, ConnectionProtocol.Http1);
         if (!state.ContinueSent)
         {
             state.ContinueSent = true;
@@ -154,10 +144,7 @@ internal static class Http1ConnectionProcessor
         CancellationToken cancellationToken
     )
     {
-        var state = GetOrCreateConnectionState(
-            connection,
-            ConnectionProtocol.Http1
-        );
+        var state = GetOrCreateConnectionState(connection, ConnectionProtocol.Http1);
         state.ContinueSent = false;
         state.RequestParsingStartedAtUtc = default;
 
@@ -352,8 +339,10 @@ internal static class Http1ConnectionProcessor
         try
         {
             int bytesRead;
-            while ((bytesRead = await stream.ReadAsync(
-                buffer.AsMemory(0, 4096), cancellationToken)) > 0)
+            while (
+                (bytesRead = await stream.ReadAsync(buffer.AsMemory(0, 4096), cancellationToken))
+                > 0
+            )
             {
                 bodyWriter.Write(buffer.AsSpan(0, bytesRead));
             }

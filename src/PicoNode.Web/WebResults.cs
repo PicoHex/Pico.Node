@@ -36,7 +36,10 @@ public static class WebResults
         {
             StatusCode = statusCode,
             ReasonPhrase = reasonPhrase,
-            Headers =  [new KeyValuePair<string, string>(HttpHeaderNames.ContentType, contentType),],
+            Headers =
+            [
+                new KeyValuePair<string, string>(HttpHeaderNames.ContentType, contentType),
+            ],
             Body = body,
         };
 

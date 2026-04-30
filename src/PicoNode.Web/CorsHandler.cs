@@ -13,8 +13,12 @@ public static class CorsHandler
         if (!IsOriginAllowed(origin, options))
             return new HttpResponse { StatusCode = 403 };
 
-        if (request.Headers.TryGetValue(HttpHeaderNames.AccessControlRequestMethod, out var requestMethod)
-            && !IsMethodAllowed(requestMethod, options))
+        if (
+            request
+                .Headers
+                .TryGetValue(HttpHeaderNames.AccessControlRequestMethod, out var requestMethod)
+            && !IsMethodAllowed(requestMethod, options)
+        )
             return new HttpResponse { StatusCode = 403 };
 
         var headers = new HttpHeaderCollection(
@@ -28,7 +32,10 @@ public static class CorsHandler
 
         if (options.AllowCredentials)
             headers.Add(
-                new KeyValuePair<string, string>(HttpHeaderNames.AccessControlAllowCredentials, "true")
+                new KeyValuePair<string, string>(
+                    HttpHeaderNames.AccessControlAllowCredentials,
+                    "true"
+                )
             );
 
         if (options.MaxAge.HasValue)
@@ -60,7 +67,10 @@ public static class CorsHandler
 
         if (options.AllowCredentials)
             headers.Add(
-                new KeyValuePair<string, string>(HttpHeaderNames.AccessControlAllowCredentials, "true")
+                new KeyValuePair<string, string>(
+                    HttpHeaderNames.AccessControlAllowCredentials,
+                    "true"
+                )
             );
 
         if (options.ExposedHeaders.Count > 0)

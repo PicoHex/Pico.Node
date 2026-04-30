@@ -107,21 +107,13 @@ internal sealed class TcpConnection : IAsyncDisposable
         catch (SocketException ex)
         {
             _node.ReportFault(NodeFaultCode.SendFailed, OperationSend, ex);
-            _lifecycle.ScheduleClose(
-                TcpCloseReason.SendFault,
-                ex,
-                _node.Options.ConnectionHandler
-            );
+            _lifecycle.ScheduleClose(TcpCloseReason.SendFault, ex, _node.Options.ConnectionHandler);
             throw;
         }
         catch (IOException ex)
         {
             _node.ReportFault(NodeFaultCode.SendFailed, OperationSend, ex);
-            _lifecycle.ScheduleClose(
-                TcpCloseReason.SendFault,
-                ex,
-                _node.Options.ConnectionHandler
-            );
+            _lifecycle.ScheduleClose(TcpCloseReason.SendFault, ex, _node.Options.ConnectionHandler);
             throw;
         }
         catch (ObjectDisposedException) when (_lifecycle.IsCloseInitiated)
@@ -136,11 +128,7 @@ internal sealed class TcpConnection : IAsyncDisposable
 
     public void Close()
     {
-        _lifecycle.ScheduleClose(
-            TcpCloseReason.LocalClose,
-            null,
-            _node.Options.ConnectionHandler
-        );
+        _lifecycle.ScheduleClose(TcpCloseReason.LocalClose, null, _node.Options.ConnectionHandler);
     }
 
     public void Close(TcpCloseReason reason)

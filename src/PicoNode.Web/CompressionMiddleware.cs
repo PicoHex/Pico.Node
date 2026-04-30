@@ -183,12 +183,18 @@ public sealed class CompressionMiddleware
 
         foreach (var header in sourceHeaders)
         {
-            if (header.Key.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase))
+            if (
+                header.Key.Equals(HttpHeaderNames.ContentLength, StringComparison.OrdinalIgnoreCase)
+            )
             {
                 continue;
             }
 
-            if (header.Key.Equals(HttpHeaderNames.ContentEncoding, StringComparison.OrdinalIgnoreCase))
+            if (
+                header
+                    .Key
+                    .Equals(HttpHeaderNames.ContentEncoding, StringComparison.OrdinalIgnoreCase)
+            )
             {
                 continue;
             }
@@ -203,7 +209,10 @@ public sealed class CompressionMiddleware
         }
 
         headers.Add(HttpHeaderNames.ContentEncoding, encoding);
-        headers.Add(HttpHeaderNames.Vary, MergeVaryHeader(varyValue, HttpHeaderNames.AcceptEncoding));
+        headers.Add(
+            HttpHeaderNames.Vary,
+            MergeVaryHeader(varyValue, HttpHeaderNames.AcceptEncoding)
+        );
 
         return headers;
     }

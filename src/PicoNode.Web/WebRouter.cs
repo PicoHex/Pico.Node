@@ -13,9 +13,7 @@ internal sealed class WebRouter
         ArgumentNullException.ThrowIfNull(routes);
 
         _paramTree = new RadixTree<CompiledRoute>();
-        var exactRouteList = new List<
-            (string Method, string Path, WebRequestHandler Handler)
-        >();
+        var exactRouteList = new List<(string Method, string Path, WebRequestHandler Handler)>();
 
         foreach (var route in routes)
         {
@@ -28,18 +26,12 @@ internal sealed class WebRouter
 
             if (string.IsNullOrWhiteSpace(route.Pattern))
             {
-                throw new ArgumentException(
-                    "Route patterns must not be blank.",
-                    nameof(routes)
-                );
+                throw new ArgumentException("Route patterns must not be blank.", nameof(routes));
             }
 
             if (!route.Pattern.StartsWith('/'))
             {
-                throw new ArgumentException(
-                    "Route patterns must start with '/'.",
-                    nameof(routes)
-                );
+                throw new ArgumentException("Route patterns must start with '/'.", nameof(routes));
             }
 
             if (route.Pattern.Contains('?'))
@@ -94,14 +86,7 @@ internal sealed class WebRouter
         List<string>? allowedMethods = null;
 
         // Try exact match — Span-based for zero-allocation hot path
-        if (
-            _exactRouteTable.TryMatch(
-                pathSpan,
-                method,
-                out var handler,
-                out var allowHeader
-            )
-        )
+        if (_exactRouteTable.TryMatch(pathSpan, method, out var handler, out var allowHeader))
         {
             return handler(context, cancellationToken);
         }
@@ -115,19 +100,12 @@ internal sealed class WebRouter
             var exactMethods = _exactRouteTable.GetMethodsForPath(path);
             if (exactMethods is not null)
             {
-                allowedMethods = [.. exactMethods];
+                allowedMethods =  [.. exactMethods];
             }
         }
 
         // Try parameterized route
-        if (
-            _paramTree.TryMatch(
-                path,
-                method,
-                out var compiledRoute,
-                out var routeValues
-            )
-        )
+        if (_paramTree.TryMatch(path, method, out var compiledRoute, out var routeValues))
         {
             if (routeValues.Count > 0)
             {

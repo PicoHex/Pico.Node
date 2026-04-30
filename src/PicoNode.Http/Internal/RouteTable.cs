@@ -22,7 +22,8 @@ public sealed class RouteTable<THandler>
     public RouteTable(
         IReadOnlyList<(string Method, string Path, THandler Handler)> routes,
         THandler? fallback,
-        string paramName)
+        string paramName
+    )
     {
         ArgumentNullException.ThrowIfNull(routes);
 
@@ -92,7 +93,8 @@ public sealed class RouteTable<THandler>
         ReadOnlySpan<char> path,
         ReadOnlySpan<char> method,
         [MaybeNullWhen(false)] out THandler handler,
-        out string? allowHeader)
+        out string? allowHeader
+    )
     {
         var pathLookup = _exactRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         if (pathLookup.TryGetValue(path, out var handlersByMethod))
@@ -122,7 +124,8 @@ public sealed class RouteTable<THandler>
         string path,
         string method,
         [MaybeNullWhen(false)] out THandler handler,
-        out string? allowHeader)
+        out string? allowHeader
+    )
     {
         if (_exactRoutes.TryGetValue(path, out var handlersByMethod))
         {
@@ -162,17 +165,10 @@ public sealed class RouteTable<THandler>
         {
             StatusCode = 405,
             ReasonPhrase = "Method Not Allowed",
-            Headers =
-            [
-                new KeyValuePair<string, string>("Allow", allowHeader),
-            ],
+            Headers =  [new KeyValuePair<string, string>("Allow", allowHeader),],
         };
 
     /// <summary>Singleton 404 Not Found response.</summary>
     public static readonly HttpResponse NotFoundResponse =
-        new()
-        {
-            StatusCode = 404,
-            ReasonPhrase = "Not Found",
-        };
+        new() { StatusCode = 404, ReasonPhrase = "Not Found", };
 }

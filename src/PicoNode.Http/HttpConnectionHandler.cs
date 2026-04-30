@@ -110,7 +110,10 @@ public sealed class HttpConnectionHandler : ITcpConnectionHandler
         return ValueTask.CompletedTask;
     }
 
-    private static void SetConnectionState(ITcpConnectionContext connection, ConnectionProtocol protocol)
+    private static void SetConnectionState(
+        ITcpConnectionContext connection,
+        ConnectionProtocol protocol
+    )
     {
         connection.UserState = new ConnectionRuntimeState { Protocol = protocol };
     }
