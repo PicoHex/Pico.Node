@@ -1,6 +1,6 @@
 # PicoNode
 
-> A layered, AOT-native networking stack for .NET — from raw TCP/UDP sockets to a fully featured HTTP web framework.
+> 分层式、原生 AOT 的 .NET 网络栈 — 从裸 TCP/UDP 套接字到功能完备的 HTTP Web 框架。
 
 [![NuGet](https://img.shields.io/nuget/v/PicoNode.svg)](https://www.nuget.org/packages/PicoNode)
 [![License](https://img.shields.io/github/license/PicoHex/PicoNode)](LICENSE)
@@ -10,80 +10,80 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  PicoNode: layered networking for .NET                      │
-│  ✓ Raw TCP/UDP socket transports with async I/O             │
-│  ✓ HTTP/1.1 + HTTP/2 + WebSocket protocols                  │
-│  ✓ Web framework with middleware, routing, static files      │
-│  ✓ Integrated with PicoHex ecosystem (PicoDI/PicoLog/PicoCfg)│
-│  ✓ Native AOT compatible across all net10.0 layers           │
-│  ✓ Minimal runtime dependencies                             │
+│  PicoNode：面向 .NET 的分层式网络框架                           │
+│  ✓ 基于异步 I/O 的裸 TCP/UDP 套接字传输层                      │
+│  ✓ 支持 HTTP/1.1 + HTTP/2 + WebSocket 协议                    │
+│  ✓ 包含中间件、路由、静态文件的 Web 框架                        │
+│  ✓ 集成 PicoHex 生态（PicoDI / PicoLog / PicoCfg）             │
+│  ✓ 所有 net10.0 层均兼容原生 AOT                               │
+│  ✓ 最小化运行时依赖                                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Why PicoNode?
+## 为什么选择 PicoNode？
 
-| Feature | PicoNode | ASP.NET Core |
+| 特性 | PicoNode | ASP.NET Core |
 |---------|----------|-------------|
-| **Dependency model** | Zero required runtime deps; layer pick-and-choose | `Microsoft.AspNetCore.App` framework reference |
-| **Request parsing** | Span-based streaming, zero-copy `System.IO.Pipelines` | String-based with `IO.Pipelines` adapter |
-| **HTTP/2** | Inline HPACK decoder, frame-level control | Transparent via Kestrel; limited low-level access |
-| **AOT Support** | ✅ Native — all net10.0 libraries | ⚠️ Requires trimming |
-| **DI / Logging / Config** | PicoDI + PicoLog + PicoCfg (PicoHex native) | Microsoft.Extensions.* |
-| **WebSocket** | RFC 6455 frame codec with message handler abstraction | Transparent via middleware |
-| **Line count** | ~15K for the full stack | ~1M+ for ASP.NET Core |
+| **依赖模型** | 零必需运行时依赖；分层按需选用 | `Microsoft.AspNetCore.App` 框架引用 |
+| **请求解析** | 基于 Span 的流式解析，`System.IO.Pipelines` 零拷贝 | 基于字符串，`IO.Pipelines` 适配器 |
+| **HTTP/2** | 内联 HPACK 解码器，帧级控制 | 通过 Kestrel 透明处理；底层访问能力有限 |
+| **AOT 支持** | ✅ 原生支持 — 所有 net10.0 库 | ⚠️ 需要裁剪 |
+| **DI / 日志 / 配置** | PicoDI + PicoLog + PicoCfg（PicoHex 原生） | Microsoft.Extensions.* |
+| **WebSocket** | RFC 6455 帧编码器加消息处理器抽象 | 通过中间件透明处理 |
+| **代码行数** | 全栈约 15K 行 | ASP.NET Core 约 100 万+ 行 |
 
-> **Design priority:** PicoNode prioritizes allocation efficiency and AOT compatibility. `ValueTask` on hot-path delegates, ArrayPool-based buffer management, and optional delegates (no forced allocations) are deliberate trade-offs — they keep the transport layer compact and predictable.
+> **设计原则：** PicoNode 优先考虑分配效率和 AOT 兼容性。热路径委托使用 `ValueTask`，基于 ArrayPool 的缓冲区管理，可选委托（无强制分配）— 这些都是有意为之的权衡，旨在保持传输层紧凑且可预测。
 
-### The PicoHex Ecosystem
+### PicoHex 生态
 
-PicoNode is part of the PicoHex family and integrates natively with:
+PicoNode 是 PicoHex 家族的一员，原生集成以下库：
 
-| Library | Purpose | NuGet |
+| 库 | 用途 | NuGet |
 |---------|---------|-------|
-| [PicoDI](https://github.com/PicoHex/PicoDI) | Zero-reflection compile-time DI | `PicoDI.Abs` |
-| [PicoLog](https://github.com/PicoHex/PicoLog) | Structured logging with AOT safety | `PicoLog.Abs` |
-| [PicoCfg](https://github.com/PicoHex/PicoCfg) | Source-generated configuration binding | `PicoCfg.Abs` |
+| [PicoDI](https://github.com/PicoHex/PicoDI) | 零反射编译时 DI | `PicoDI.Abs` |
+| [PicoLog](https://github.com/PicoHex/PicoLog) | AOT 安全的结构化日志 | `PicoLog.Abs` |
+| [PicoCfg](https://github.com/PicoHex/PicoCfg) | 源代码生成的配置绑定 | `PicoCfg.Abs` |
 
 ```
-PicoNode.Abs        Core interfaces                          (netstandard2.0, zero deps)
+PicoNode.Abs        核心接口                                  (netstandard2.0, zero deps)
     ↓
-PicoNode             TCP & UDP transports + ILogger           (net10.0)
+PicoNode             TCP & UDP 传输层 + ILogger               (net10.0)
     ↓
 PicoNode.Http        HTTP/1.1 + HTTP/2 + WebSocket            (net10.0)
     ↓
-PicoNode.Web         Web framework + PicoDI ISvcContainer     (net10.0)
+PicoNode.Web         Web 框架 + PicoDI ISvcContainer          (net10.0)
     ↓
-PicoWeb              Ready-to-run web server + PicoCfg        (net10.0)
+PicoWeb              开箱即用的 Web 服务器 + PicoCfg            (net10.0)
 ```
 
-## Quick Start
+## 快速开始
 
-### Installation
+### 安装
 
 ```bash
 dotnet add package PicoNode
 ```
 
-> Installing `PicoNode` brings in the TCP/UDP transport. Reference `PicoNode.Http` or `PicoNode.Web` for higher-level layers.
+> 安装 `PicoNode` 将引入 TCP/UDP 传输层。需要更上层功能时，请引用 `PicoNode.Http` 或 `PicoNode.Web`。
 
-### Package Architecture
+### 包结构
 
-PicoNode ships as layered NuGet packages. Pick exactly the abstraction level you need:
+PicoNode 以分层 NuGet 包的形式发布。按需选择你需要的抽象层级：
 
-| Package | Install when… | What you get |
+| 包 | 何时安装 | 包含内容 |
 |---------|--------------|-------------|
-| **PicoWeb** | You want a ready-to-run web server | WebServer + WebApp + HTTP + TCP (all transitive) |
-| **PicoNode.Web** | You want the web framework without hosting | WebApp, routing, middleware, static files, DI |
-| **PicoNode.Http** | You want raw HTTP protocol handling | HTTP/1.1 + HTTP/2 + WebSocket, HttpRouter |
-| **PicoNode** | You want raw TCP/UDP transports | TcpNode, UdpNode, socket lifecycle, metrics |
-| **PicoNode.Abs** | You're writing a handler or extension | INode, ITcpConnectionHandler, core contracts |
+| **PicoWeb** | 你想要一个开箱即用的 Web 服务器 | WebServer + WebApp + HTTP + TCP（全部传递依赖） |
+| **PicoNode.Web** | 你想要 Web 框架但不需托管层 | WebApp、路由、中间件、静态文件、DI |
+| **PicoNode.Http** | 你想要原生 HTTP 协议处理 | HTTP/1.1 + HTTP/2 + WebSocket、HttpRouter |
+| **PicoNode** | 你想要裸 TCP/UDP 传输层 | TcpNode、UdpNode、套接字生命周期、指标 |
+| **PicoNode.Abs** | 你在编写处理器或扩展 | INode、ITcpConnectionHandler、核心契约 |
 
 ```
 PicoWeb  →  PicoNode.Web  →  PicoNode.Http  →  PicoNode  →  PicoNode.Abs
-(host)      (web/DI)         (HTTP)            (transport)   (interfaces)
+(宿主)      (Web / DI)       (HTTP)            (传输层)      (接口)
 ```
 
-### TCP Echo Server
+### TCP 回显服务器
 
 ```csharp
 using System.Net;
@@ -118,7 +118,7 @@ sealed class EchoHandler : ITcpConnectionHandler
 }
 ```
 
-### HTTP Server (Low-Level)
+### HTTP 服务器（底层）
 
 ```csharp
 using System.Net;
@@ -152,7 +152,7 @@ Console.ReadLine();
 await node.DisposeAsync();
 ```
 
-### Web Application (with PicoHex Ecosystem)
+### Web 应用（搭配 PicoHex 生态）
 
 ```csharp
 using System.Net;
@@ -216,11 +216,11 @@ Console.ReadLine();
 await server.StopAsync();
 ```
 
-## Configuration
+## 配置
 
-PicoNode supports two configuration modes:
+PicoNode 支持两种配置模式：
 
-### Code-First (inline)
+### 代码优先（内联）
 
 ```csharp
 var options = new TcpNodeOptions
@@ -232,7 +232,7 @@ var options = new TcpNodeOptions
 var node = new TcpNode(options);
 ```
 
-### PicoCfg Binding (AOT-safe, source-generated)
+### PicoCfg 绑定（AOT 安全，源代码生成）
 
 ```csharp
 var config = await Cfg.CreateBuilder()
@@ -244,7 +244,7 @@ options.Endpoint = new IPEndPoint(IPAddress.Any, 8080); // required
 var node = new TcpNode(options);
 ```
 
-### Runtime Reload
+### 运行时重载
 
 ```csharp
 // TcpNode supports runtime config reload (except Endpoint)
@@ -256,44 +256,44 @@ var options = new TcpNodeOptions
 // Node starts a reload loop watching for config changes
 ```
 
-### Key Options
+### 关键选项
 
 #### TcpNodeOptions
 
-| Option | Default | Description |
+| 选项 | 默认值 | 说明 |
 |--------|---------|-------------|
-| `Endpoint` | *(required)* | Local endpoint to bind |
-| `ConnectionHandler` | *(required)* | `ITcpConnectionHandler` |
-| `MaxConnections` | 1000 | Maximum concurrent connections |
-| `IdleTimeout` | 2 min | Time before idle connections are closed |
-| `DrainTimeout` | 5 sec | Grace period on shutdown |
-| `SslOptions` | `null` | TLS/SSL configuration |
-| `NoDelay` | `true` | TCP_NODELAY (Nagle disabled) |
-| `Logger` | `null` | PicoLog `ILogger` for structured diagnostics |
+| `Endpoint` | *（必填）* | 要绑定的本地端点 |
+| `ConnectionHandler` | *（必填）* | `ITcpConnectionHandler` |
+| `MaxConnections` | 1000 | 最大并发连接数 |
+| `IdleTimeout` | 2 分钟 | 空闲连接关闭前的等待时间 |
+| `DrainTimeout` | 5 秒 | 关闭时的宽限期 |
+| `SslOptions` | `null` | TLS/SSL 配置 |
+| `NoDelay` | `true` | TCP_NODELAY（禁用 Nagle 算法） |
+| `Logger` | `null` | 用于结构化诊断的 PicoLog `ILogger` |
 
 #### UdpNodeOptions
 
-| Option | Default | Description |
+| 选项 | 默认值 | 说明 |
 |--------|---------|-------------|
-| `Endpoint` | *(required)* | Local endpoint to bind |
-| `DatagramHandler` | *(required)* | `IUdpDatagramHandler` |
-| `DispatchWorkerCount` | 1 | Concurrent datagram workers |
-| `DatagramQueueCapacity` | 1024 | Per-worker queue depth |
-| `QueueOverflowMode` | `DropNewest` | Behavior when queues are full |
+| `Endpoint` | *（必填）* | 要绑定的本地端点 |
+| `DatagramHandler` | *（必填）* | `IUdpDatagramHandler` |
+| `DispatchWorkerCount` | 1 | 并发数据报工作线程数 |
+| `DatagramQueueCapacity` | 1024 | 每个工作线程的队列深度 |
+| `QueueOverflowMode` | `DropNewest` | 队列满时的处理策略 |
 | `Logger` | `null` | PicoLog `ILogger` |
 
 #### HttpConnectionHandlerOptions
 
-| Option | Default | Description |
+| 选项 | 默认值 | 说明 |
 |--------|---------|-------------|
-| `RequestHandler` | *(required)* | HttpRequestHandler delegate |
-| `ServerHeader` | `null` | Value for the `Server` header |
-| `MaxRequestBytes` | 8192 | Maximum request size in bytes |
+| `RequestHandler` | *（必填）* | HttpRequestHandler 委托 |
+| `ServerHeader` | `null` | `Server` 响应头的值 |
+| `MaxRequestBytes` | 8192 | 最大请求大小（字节） |
 | `Logger` | `null` | PicoLog `ILogger` |
 
-## Logging
+## 日志
 
-PicoNode uses PicoLog for structured diagnostics. All non-fatal errors are logged with operation context:
+PicoNode 使用 PicoLog 进行结构化诊断。所有非致命错误都会附带操作上下文进行记录：
 
 ```csharp
 var logger = new LoggerFactory([new ConsoleSink()])
@@ -312,14 +312,14 @@ var node = new TcpNode(new TcpNodeOptions
 // [Debug] Socket shutdown during TLS teardown failed
 ```
 
-**Log levels by fault code:**
-- `Error`: StartFailed, StopFailed, AcceptFailed, ReceiveFailed, SendFailed, HandlerFailed, TlsFailed, DatagramReceiveFailed, DatagramHandlerFailed
-- `Warning`: SessionRejected, DatagramDropped
-- `Debug`: Socket shutdown during cleanup (best-effort operations)
+**按错误码划分的日志级别：**
+- `Error`：StartFailed、StopFailed、AcceptFailed、ReceiveFailed、SendFailed、HandlerFailed、TlsFailed、DatagramReceiveFailed、DatagramHandlerFailed
+- `Warning`：SessionRejected、DatagramDropped
+- `Debug`：清理期间套接字关闭（尽力而为的操作）
 
-## Dependency Injection
+## 依赖注入
 
-PicoNode's Web layer integrates with PicoDI for scoped request handling:
+PicoNode 的 Web 层与 PicoDI 集成，支持作用域请求处理：
 
 ```csharp
 var container = new SvcContainer();
@@ -338,9 +338,9 @@ app.MapGet("/db", async (ctx, ct) =>
 });
 ```
 
-## Built-in Middleware
+## 内置中间件
 
-### Compression
+### 压缩
 
 ```csharp
 var compression = new CompressionMiddleware(
@@ -348,9 +348,9 @@ var compression = new CompressionMiddleware(
 app.Use(compression.InvokeAsync);
 ```
 
-Supports Brotli, Gzip, and Deflate. Auto-selects the best encoding from the client's `Accept-Encoding` header.
+支持 Brotli、Gzip 和 Deflate。根据客户端 `Accept-Encoding` 请求头自动选择最佳编码。
 
-### Static Files
+### 静态文件
 
 ```csharp
 var staticFiles = new StaticFileMiddleware(
@@ -358,7 +358,7 @@ var staticFiles = new StaticFileMiddleware(
 app.Use(staticFiles.InvokeAsync);
 ```
 
-Serves files from a root directory. Prevents directory traversal. Maps 30+ file extensions to MIME types.
+从根目录提供文件服务。防止目录遍历。将 30 多种文件扩展名映射到 MIME 类型。
 
 ### CORS
 
@@ -380,7 +380,7 @@ app.Use((ctx, next, ct) =>
 });
 ```
 
-### Cookies & Multipart
+### Cookies 与 Multipart
 
 ```csharp
 // Cookie parsing
@@ -399,9 +399,9 @@ foreach (var file in form?.Files ?? [])
     Console.WriteLine($"{file.FileName}: {file.ContentType} ({file.Data.Length} bytes)");
 ```
 
-## Metrics
+## 指标
 
-Both `TcpNode` and `UdpNode` expose real-time counters:
+`TcpNode` 和 `UdpNode` 都暴露实时计数器：
 
 ```csharp
 // TCP
@@ -418,29 +418,29 @@ Console.WriteLine($"Datagrams Tx: {udpMetrics.TotalDatagramsSent}");
 Console.WriteLine($"Dropped: {udpMetrics.TotalDropped}");
 ```
 
-## Projects
+## 项目
 
-| Project | Target | Description |
+| 项目 | 目标框架 | 说明 |
 |---------|--------|-------------|
-| **PicoNode.Abs** | netstandard2.0 | Core interfaces: `INode`, `ITcpConnectionHandler`, `IUdpDatagramHandler`, fault codes, enums |
-| **PicoNode** | net10.0 | `TcpNode` and `UdpNode` — production-grade async socket transports |
-| **PicoNode.Http** | net10.0 | `HttpConnectionHandler`, `HttpRouter` — HTTP/1.1, HTTP/2, WebSocket |
-| **PicoNode.Web** | net10.0 | `WebApp`, `WebRouter`, middleware, static files, compression, CORS, DI |
-| **PicoWeb** | net10.0 | `WebServer` — thin host wiring `WebApp` to `TcpNode` |
+| **PicoNode.Abs** | netstandard2.0 | 核心接口：`INode`、`ITcpConnectionHandler`、`IUdpDatagramHandler`、错误码、枚举 |
+| **PicoNode** | net10.0 | `TcpNode` 和 `UdpNode` — 生产级异步套接字传输层 |
+| **PicoNode.Http** | net10.0 | `HttpConnectionHandler`、`HttpRouter` — HTTP/1.1、HTTP/2、WebSocket |
+| **PicoNode.Web** | net10.0 | `WebApp`、`WebRouter`、中间件、静态文件、压缩、CORS、DI |
+| **PicoWeb** | net10.0 | `WebServer` — 将 `WebApp` 连接到 `TcpNode` 的轻量宿主 |
 
-## Samples
+## 示例
 
-| Sample | Port | Description |
+| 示例 | 端口 | 说明 |
 |--------|------|-------------|
-| `PicoNode.Samples.Echo` | 7001 (TCP), 7002 (UDP) | Raw TCP/UDP echo server |
-| `PicoNode.Samples.Http` | 7003 | HTTP routing with `HttpRouter` |
-| `PicoWeb.Samples` | 7004 | Full web app with middleware and DI |
+| `PicoNode.Samples.Echo` | 7001（TCP）、7002（UDP） | 裸 TCP/UDP 回显服务器 |
+| `PicoNode.Samples.Http` | 7003 | 使用 `HttpRouter` 的 HTTP 路由 |
+| `PicoWeb.Samples` | 7004 | 包含中间件和 DI 的完整 Web 应用 |
 
 ```bash
 dotnet run --project samples/PicoWeb.Samples/PicoWeb.Samples.csproj
 ```
 
-## Building & Testing
+## 构建与测试
 
 ```bash
 # Build the entire solution
@@ -456,28 +456,28 @@ dotnet test --project tests/PicoNode.Http.Tests/PicoNode.Http.Tests.csproj -c Re
 dotnet publish src/PicoWeb/PicoWeb.csproj -c Release -r win-x64 -p:PublishAot=true
 ```
 
-## Benchmarks
+## 基准测试
 
-Microbenchmarks are provided via [PicoBench](https://github.com/PicoHex/PicoBench):
+微基准测试通过 [PicoBench](https://github.com/PicoHex/PicoBench) 提供：
 
 ```bash
 dotnet run --project benchmarks/PicoNode.Http.Benchmarks/PicoNode.Http.Benchmarks.csproj -c Release -- quick
 ```
 
-Benchmarks cover HTTP parsing, router dispatch (hit/miss/405), full pipeline, and localhost round-trips.
+基准测试涵盖 HTTP 解析、路由分发（命中/未命中/405）、完整管道以及本地环回往返。
 
-## Requirements
+## 环境要求
 
-- **.NET 10.0+** (PicoNode, PicoNode.Http, PicoNode.Web, PicoWeb)
-- **.NET Standard 2.0** (PicoNode.Abs — maximum compatibility)
-- PicoHex ecosystem (optional): PicoDI 2026.6.0+, PicoLog 2026.2.3+, PicoCfg 2026.3.1+
+- **.NET 10.0+**（PicoNode、PicoNode.Http、PicoNode.Web、PicoWeb）
+- **.NET Standard 2.0**（PicoNode.Abs — 最大兼容性）
+- PicoHex 生态（可选）：PicoDI 2026.6.0+、PicoLog 2026.2.3+、PicoCfg 2026.3.1+
 
-## License
+## 许可证
 
 [MIT](LICENSE) © 2025 XiaoFei Du
 
 ---
 
 <p align="center">
-  <b>PicoNode</b> — layered networking for .NET
+  <b>PicoNode</b> — 面向 .NET 的分层式网络框架
 </p>

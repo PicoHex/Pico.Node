@@ -1,12 +1,12 @@
 # PicoNode
 
-> A layered, AOT-native networking stack for .NET — from raw TCP/UDP sockets to a fully featured HTTP web framework.
+> Un stack de networking nativo AOT y por capas para .NET — desde sockets TCP/UDP puros hasta un framework web HTTP completo.
 
 [![NuGet](https://img.shields.io/nuget/v/PicoNode.svg)](https://www.nuget.org/packages/PicoNode)
 [![License](https://img.shields.io/github/license/PicoHex/PicoNode)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com)
 
-**English** | [简体中文](README.zh.md) | [繁體中文](README.zh-TW.md) | [Deutsch](README.de.md) | [Español](README.es.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [Português (Brasil)](README.pt-BR.md) | [Русский](README.ru.md)
+[English](README.md) | [简体中文](README.zh.md) | [繁體中文](README.zh-TW.md) | [Deutsch](README.de.md) | **Español** | [Français](README.fr.md) | [日本語](README.ja.md) | [Português (Brasil)](README.pt-BR.md) | [Русский](README.ru.md)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -20,29 +20,29 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Why PicoNode?
+## ¿Por qué PicoNode?
 
-| Feature | PicoNode | ASP.NET Core |
+| Característica | PicoNode | ASP.NET Core |
 |---------|----------|-------------|
-| **Dependency model** | Zero required runtime deps; layer pick-and-choose | `Microsoft.AspNetCore.App` framework reference |
-| **Request parsing** | Span-based streaming, zero-copy `System.IO.Pipelines` | String-based with `IO.Pipelines` adapter |
-| **HTTP/2** | Inline HPACK decoder, frame-level control | Transparent via Kestrel; limited low-level access |
-| **AOT Support** | ✅ Native — all net10.0 libraries | ⚠️ Requires trimming |
-| **DI / Logging / Config** | PicoDI + PicoLog + PicoCfg (PicoHex native) | Microsoft.Extensions.* |
-| **WebSocket** | RFC 6455 frame codec with message handler abstraction | Transparent via middleware |
-| **Line count** | ~15K for the full stack | ~1M+ for ASP.NET Core |
+| **Modelo de dependencias** | Sin dependencias de ejecución obligatorias; capas seleccionables | Referencia al framework `Microsoft.AspNetCore.App` |
+| **Análisis de solicitudes** | Streaming basado en Span, `System.IO.Pipelines` zero-copy | Basado en strings con adaptador `IO.Pipelines` |
+| **HTTP/2** | Decodificador HPACK inline, control a nivel de trama | Transparente vía Kestrel; acceso limitado a bajo nivel |
+| **Compatibilidad AOT** | ✅ Nativo — todas las librerías net10.0 | ⚠️ Requiere trimming |
+| **DI / Logging / Config** | PicoDI + PicoLog + PicoCfg (nativos de PicoHex) | Microsoft.Extensions.* |
+| **WebSocket** | Códec de trama RFC 6455 con abstracción de manejador de mensajes | Transparente vía middleware |
+| **Líneas de código** | ~15K para todo el stack | ~1M+ para ASP.NET Core |
 
-> **Design priority:** PicoNode prioritizes allocation efficiency and AOT compatibility. `ValueTask` on hot-path delegates, ArrayPool-based buffer management, and optional delegates (no forced allocations) are deliberate trade-offs — they keep the transport layer compact and predictable.
+> **Prioridad de diseño:** PicoNode prioriza la eficiencia de asignación y la compatibilidad AOT. El uso de `ValueTask` en delegados de ruta crítica, la gestión de búferes basada en ArrayPool y los delegados opcionales (sin asignaciones forzadas) son compensaciones deliberadas — mantienen la capa de transporte compacta y predecible.
 
-### The PicoHex Ecosystem
+### El Ecosistema PicoHex
 
-PicoNode is part of the PicoHex family and integrates natively with:
+PicoNode es parte de la familia PicoHex y se integra de forma nativa con:
 
-| Library | Purpose | NuGet |
+| Librería | Propósito | NuGet |
 |---------|---------|-------|
-| [PicoDI](https://github.com/PicoHex/PicoDI) | Zero-reflection compile-time DI | `PicoDI.Abs` |
-| [PicoLog](https://github.com/PicoHex/PicoLog) | Structured logging with AOT safety | `PicoLog.Abs` |
-| [PicoCfg](https://github.com/PicoHex/PicoCfg) | Source-generated configuration binding | `PicoCfg.Abs` |
+| [PicoDI](https://github.com/PicoHex/PicoDI) | DI en tiempo de compilación sin reflection | `PicoDI.Abs` |
+| [PicoLog](https://github.com/PicoHex/PicoLog) | Logging estructurado con seguridad AOT | `PicoLog.Abs` |
+| [PicoCfg](https://github.com/PicoHex/PicoCfg) | Vinculación de configuración generada en código fuente | `PicoCfg.Abs` |
 
 ```
 PicoNode.Abs        Core interfaces                          (netstandard2.0, zero deps)
@@ -56,34 +56,34 @@ PicoNode.Web         Web framework + PicoDI ISvcContainer     (net10.0)
 PicoWeb              Ready-to-run web server + PicoCfg        (net10.0)
 ```
 
-## Quick Start
+## Inicio Rápido
 
-### Installation
+### Instalación
 
 ```bash
 dotnet add package PicoNode
 ```
 
-> Installing `PicoNode` brings in the TCP/UDP transport. Reference `PicoNode.Http` or `PicoNode.Web` for higher-level layers.
+> Al instalar `PicoNode` se incluye el transporte TCP/UDP. Referencia `PicoNode.Http` o `PicoNode.Web` para capas de nivel superior.
 
-### Package Architecture
+### Arquitectura de Paquetes
 
-PicoNode ships as layered NuGet packages. Pick exactly the abstraction level you need:
+PicoNode se distribuye como paquetes NuGet por capas. Elige exactamente el nivel de abstracción que necesites:
 
-| Package | Install when… | What you get |
+| Paquete | Instalar cuando… | Qué obtienes |
 |---------|--------------|-------------|
-| **PicoWeb** | You want a ready-to-run web server | WebServer + WebApp + HTTP + TCP (all transitive) |
-| **PicoNode.Web** | You want the web framework without hosting | WebApp, routing, middleware, static files, DI |
-| **PicoNode.Http** | You want raw HTTP protocol handling | HTTP/1.1 + HTTP/2 + WebSocket, HttpRouter |
-| **PicoNode** | You want raw TCP/UDP transports | TcpNode, UdpNode, socket lifecycle, metrics |
-| **PicoNode.Abs** | You're writing a handler or extension | INode, ITcpConnectionHandler, core contracts |
+| **PicoWeb** | Quieres un servidor web listo para ejecutar | WebServer + WebApp + HTTP + TCP (todo transitivo) |
+| **PicoNode.Web** | Quieres el framework web sin hosting | WebApp, routing, middleware, archivos estáticos, DI |
+| **PicoNode.Http** | Quieres manejo de protocolo HTTP puro | HTTP/1.1 + HTTP/2 + WebSocket, HttpRouter |
+| **PicoNode** | Quieres transportes TCP/UDP puros | TcpNode, UdpNode, ciclo de vida de sockets, métricas |
+| **PicoNode.Abs** | Estás escribiendo un manejador o extensión | INode, ITcpConnectionHandler, contratos principales |
 
 ```
 PicoWeb  →  PicoNode.Web  →  PicoNode.Http  →  PicoNode  →  PicoNode.Abs
 (host)      (web/DI)         (HTTP)            (transport)   (interfaces)
 ```
 
-### TCP Echo Server
+### Servidor TCP Echo
 
 ```csharp
 using System.Net;
@@ -118,7 +118,7 @@ sealed class EchoHandler : ITcpConnectionHandler
 }
 ```
 
-### HTTP Server (Low-Level)
+### Servidor HTTP (Bajo Nivel)
 
 ```csharp
 using System.Net;
@@ -152,7 +152,7 @@ Console.ReadLine();
 await node.DisposeAsync();
 ```
 
-### Web Application (with PicoHex Ecosystem)
+### Aplicación Web (con el Ecosistema PicoHex)
 
 ```csharp
 using System.Net;
@@ -216,9 +216,9 @@ Console.ReadLine();
 await server.StopAsync();
 ```
 
-## Configuration
+## Configuración
 
-PicoNode supports two configuration modes:
+PicoNode admite dos modos de configuración:
 
 ### Code-First (inline)
 
@@ -232,7 +232,7 @@ var options = new TcpNodeOptions
 var node = new TcpNode(options);
 ```
 
-### PicoCfg Binding (AOT-safe, source-generated)
+### Vinculación PicoCfg (seguro para AOT, generado en código fuente)
 
 ```csharp
 var config = await Cfg.CreateBuilder()
@@ -244,56 +244,56 @@ options.Endpoint = new IPEndPoint(IPAddress.Any, 8080); // required
 var node = new TcpNode(options);
 ```
 
-### Runtime Reload
+### Recarga en Tiempo de Ejecución
 
 ```csharp
-// TcpNode supports runtime config reload (except Endpoint)
+// TcpNode soporta recarga de configuración en tiempo de ejecución (excepto Endpoint)
 var options = new TcpNodeOptions
 {
     Endpoint = new IPEndPoint(IPAddress.Loopback, 8080),
-    Config = config, // ICfgRoot for live reload
+    Config = config, // ICfgRoot para recarga en vivo
 };
-// Node starts a reload loop watching for config changes
+// El nodo inicia un bucle de recarga que observa cambios en la configuración
 ```
 
-### Key Options
+### Opciones Clave
 
 #### TcpNodeOptions
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `Endpoint` | *(required)* | Local endpoint to bind |
-| `ConnectionHandler` | *(required)* | `ITcpConnectionHandler` |
-| `MaxConnections` | 1000 | Maximum concurrent connections |
-| `IdleTimeout` | 2 min | Time before idle connections are closed |
-| `DrainTimeout` | 5 sec | Grace period on shutdown |
-| `SslOptions` | `null` | TLS/SSL configuration |
-| `NoDelay` | `true` | TCP_NODELAY (Nagle disabled) |
-| `Logger` | `null` | PicoLog `ILogger` for structured diagnostics |
+| Opción | Por Defecto | Descripción |
+|--------|-------------|-------------|
+| `Endpoint` | *(obligatorio)* | Endpoint local al que vincularse |
+| `ConnectionHandler` | *(obligatorio)* | `ITcpConnectionHandler` |
+| `MaxConnections` | 1000 | Máximo de conexiones concurrentes |
+| `IdleTimeout` | 2 min | Tiempo antes de cerrar conexiones inactivas |
+| `DrainTimeout` | 5 seg | Período de gracia al apagar |
+| `SslOptions` | `null` | Configuración TLS/SSL |
+| `NoDelay` | `true` | TCP_NODELAY (Nagle desactivado) |
+| `Logger` | `null` | `ILogger` de PicoLog para diagnóstico estructurado |
 
 #### UdpNodeOptions
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `Endpoint` | *(required)* | Local endpoint to bind |
-| `DatagramHandler` | *(required)* | `IUdpDatagramHandler` |
-| `DispatchWorkerCount` | 1 | Concurrent datagram workers |
-| `DatagramQueueCapacity` | 1024 | Per-worker queue depth |
-| `QueueOverflowMode` | `DropNewest` | Behavior when queues are full |
-| `Logger` | `null` | PicoLog `ILogger` |
+| Opción | Por Defecto | Descripción |
+|--------|-------------|-------------|
+| `Endpoint` | *(obligatorio)* | Endpoint local al que vincularse |
+| `DatagramHandler` | *(obligatorio)* | `IUdpDatagramHandler` |
+| `DispatchWorkerCount` | 1 | Trabajadores de datagramas concurrentes |
+| `DatagramQueueCapacity` | 1024 | Profundidad de cola por trabajador |
+| `QueueOverflowMode` | `DropNewest` | Comportamiento cuando las colas están llenas |
+| `Logger` | `null` | `ILogger` de PicoLog |
 
 #### HttpConnectionHandlerOptions
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `RequestHandler` | *(required)* | HttpRequestHandler delegate |
-| `ServerHeader` | `null` | Value for the `Server` header |
-| `MaxRequestBytes` | 8192 | Maximum request size in bytes |
-| `Logger` | `null` | PicoLog `ILogger` |
+| Opción | Por Defecto | Descripción |
+|--------|-------------|-------------|
+| `RequestHandler` | *(obligatorio)* | Delegado HttpRequestHandler |
+| `ServerHeader` | `null` | Valor para la cabecera `Server` |
+| `MaxRequestBytes` | 8192 | Tamaño máximo de solicitud en bytes |
+| `Logger` | `null` | `ILogger` de PicoLog |
 
 ## Logging
 
-PicoNode uses PicoLog for structured diagnostics. All non-fatal errors are logged with operation context:
+PicoNode usa PicoLog para diagnóstico estructurado. Todos los errores no fatales se registran con contexto de operación:
 
 ```csharp
 var logger = new LoggerFactory([new ConsoleSink()])
@@ -312,14 +312,14 @@ var node = new TcpNode(new TcpNodeOptions
 // [Debug] Socket shutdown during TLS teardown failed
 ```
 
-**Log levels by fault code:**
+**Niveles de log según código de fallo:**
 - `Error`: StartFailed, StopFailed, AcceptFailed, ReceiveFailed, SendFailed, HandlerFailed, TlsFailed, DatagramReceiveFailed, DatagramHandlerFailed
 - `Warning`: SessionRejected, DatagramDropped
-- `Debug`: Socket shutdown during cleanup (best-effort operations)
+- `Debug`: Socket shutdown durante la limpieza (operaciones de mejor esfuerzo)
 
-## Dependency Injection
+## Inyección de Dependencias
 
-PicoNode's Web layer integrates with PicoDI for scoped request handling:
+La capa Web de PicoNode se integra con PicoDI para el manejo de solicitudes con ámbito (scoped):
 
 ```csharp
 var container = new SvcContainer();
@@ -327,9 +327,9 @@ container.RegisterScoped<IDatabase, SqlDatabase>();
 container.RegisterSingleton<ICache, RedisCache>();
 
 var app = new WebApp();
-app.Build(container); // Injects scope middleware per request
+app.Build(container); // Inyecta middleware de ámbito por solicitud
 
-// In your route handler:
+// En tu manejador de ruta:
 app.MapGet("/db", async (ctx, ct) =>
 {
     var db = ctx.Services!.GetService<IDatabase>();
@@ -338,9 +338,9 @@ app.MapGet("/db", async (ctx, ct) =>
 });
 ```
 
-## Built-in Middleware
+## Middleware Integrado
 
-### Compression
+### Compresión
 
 ```csharp
 var compression = new CompressionMiddleware(
@@ -348,9 +348,9 @@ var compression = new CompressionMiddleware(
 app.Use(compression.InvokeAsync);
 ```
 
-Supports Brotli, Gzip, and Deflate. Auto-selects the best encoding from the client's `Accept-Encoding` header.
+Soporta Brotli, Gzip y Deflate. Selecciona automáticamente la mejor codificación según la cabecera `Accept-Encoding` del cliente.
 
-### Static Files
+### Archivos Estáticos
 
 ```csharp
 var staticFiles = new StaticFileMiddleware(
@@ -358,7 +358,7 @@ var staticFiles = new StaticFileMiddleware(
 app.Use(staticFiles.InvokeAsync);
 ```
 
-Serves files from a root directory. Prevents directory traversal. Maps 30+ file extensions to MIME types.
+Sirve archivos desde un directorio raíz. Previene el directory traversal. Asigna más de 30 extensiones de archivo a tipos MIME.
 
 ### CORS
 
@@ -380,7 +380,7 @@ app.Use((ctx, next, ct) =>
 });
 ```
 
-### Cookies & Multipart
+### Cookies y Multipart
 
 ```csharp
 // Cookie parsing
@@ -399,9 +399,9 @@ foreach (var file in form?.Files ?? [])
     Console.WriteLine($"{file.FileName}: {file.ContentType} ({file.Data.Length} bytes)");
 ```
 
-## Metrics
+## Métricas
 
-Both `TcpNode` and `UdpNode` expose real-time counters:
+Tanto `TcpNode` como `UdpNode` exponen contadores en tiempo real:
 
 ```csharp
 // TCP
@@ -418,29 +418,29 @@ Console.WriteLine($"Datagrams Tx: {udpMetrics.TotalDatagramsSent}");
 Console.WriteLine($"Dropped: {udpMetrics.TotalDropped}");
 ```
 
-## Projects
+## Proyectos
 
-| Project | Target | Description |
+| Proyecto | Target | Descripción |
 |---------|--------|-------------|
-| **PicoNode.Abs** | netstandard2.0 | Core interfaces: `INode`, `ITcpConnectionHandler`, `IUdpDatagramHandler`, fault codes, enums |
-| **PicoNode** | net10.0 | `TcpNode` and `UdpNode` — production-grade async socket transports |
+| **PicoNode.Abs** | netstandard2.0 | Interfaces principales: `INode`, `ITcpConnectionHandler`, `IUdpDatagramHandler`, códigos de fallo, enums |
+| **PicoNode** | net10.0 | `TcpNode` y `UdpNode` — transportes de socket asíncronos de calidad de producción |
 | **PicoNode.Http** | net10.0 | `HttpConnectionHandler`, `HttpRouter` — HTTP/1.1, HTTP/2, WebSocket |
-| **PicoNode.Web** | net10.0 | `WebApp`, `WebRouter`, middleware, static files, compression, CORS, DI |
-| **PicoWeb** | net10.0 | `WebServer` — thin host wiring `WebApp` to `TcpNode` |
+| **PicoNode.Web** | net10.0 | `WebApp`, `WebRouter`, middleware, archivos estáticos, compresión, CORS, DI |
+| **PicoWeb** | net10.0 | `WebServer` — host delgado que conecta `WebApp` con `TcpNode` |
 
-## Samples
+## Ejemplos
 
-| Sample | Port | Description |
+| Ejemplo | Puerto | Descripción |
 |--------|------|-------------|
-| `PicoNode.Samples.Echo` | 7001 (TCP), 7002 (UDP) | Raw TCP/UDP echo server |
-| `PicoNode.Samples.Http` | 7003 | HTTP routing with `HttpRouter` |
-| `PicoWeb.Samples` | 7004 | Full web app with middleware and DI |
+| `PicoNode.Samples.Echo` | 7001 (TCP), 7002 (UDP) | Servidor echo TCP/UDP puro |
+| `PicoNode.Samples.Http` | 7003 | Enrutamiento HTTP con `HttpRouter` |
+| `PicoWeb.Samples` | 7004 | Aplicación web completa con middleware y DI |
 
 ```bash
 dotnet run --project samples/PicoWeb.Samples/PicoWeb.Samples.csproj
 ```
 
-## Building & Testing
+## Compilación y Pruebas
 
 ```bash
 # Build the entire solution
@@ -458,26 +458,26 @@ dotnet publish src/PicoWeb/PicoWeb.csproj -c Release -r win-x64 -p:PublishAot=tr
 
 ## Benchmarks
 
-Microbenchmarks are provided via [PicoBench](https://github.com/PicoHex/PicoBench):
+Los microbenchmarks se proporcionan a través de [PicoBench](https://github.com/PicoHex/PicoBench):
 
 ```bash
 dotnet run --project benchmarks/PicoNode.Http.Benchmarks/PicoNode.Http.Benchmarks.csproj -c Release -- quick
 ```
 
-Benchmarks cover HTTP parsing, router dispatch (hit/miss/405), full pipeline, and localhost round-trips.
+Los benchmarks cubren análisis HTTP, despacho de router (acierto/fallo/405), pipeline completo y viajes de ida y vuelta en localhost.
 
-## Requirements
+## Requisitos
 
 - **.NET 10.0+** (PicoNode, PicoNode.Http, PicoNode.Web, PicoWeb)
-- **.NET Standard 2.0** (PicoNode.Abs — maximum compatibility)
-- PicoHex ecosystem (optional): PicoDI 2026.6.0+, PicoLog 2026.2.3+, PicoCfg 2026.3.1+
+- **.NET Standard 2.0** (PicoNode.Abs — máxima compatibilidad)
+- Ecosistema PicoHex (opcional): PicoDI 2026.6.0+, PicoLog 2026.2.3+, PicoCfg 2026.3.1+
 
-## License
+## Licencia
 
 [MIT](LICENSE) © 2025 XiaoFei Du
 
 ---
 
 <p align="center">
-  <b>PicoNode</b> — layered networking for .NET
+  <b>PicoNode</b> — networking por capas para .NET
 </p>
